@@ -130,6 +130,37 @@ public class MainActivity extends AppCompatActivity {
 
     private androidx.cardview.widget.CardView previewCard;
 
+    // --- FİZİKSEL TUŞLARI VE ÖZEL SCANCODE'U DİNLEME ---
+    @Override
+    public boolean onKeyDown(int keyCode, android.view.KeyEvent event) {
+
+        // 1. Özel Tuş Kontrolü (ScanCode: 1250)
+        // 2. Standart Ses Tuşları (Volume Up / Down)
+        // 3. Standart Kamera Tuşu (Bazı cihazlarda bulunur)
+        if (event.getScanCode() == 1250 ||
+                keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP ||
+                keyCode == android.view.KeyEvent.KEYCODE_VOLUME_DOWN ||
+                keyCode == android.view.KeyEvent.KEYCODE_CAMERA) {
+
+            // getRepeatCount() == 0 kontrolü çok önemlidir.
+            // Bu kontrol, tuşa basılı tuttuğunuzda uygulamanın "seri çekim" yapıp
+            // çökmesini veya donmasını engeller. Sadece ilk basışta çalışır.
+            if (event.getRepeatCount() == 0) {
+                if (btnTakePhoto != null) {
+                    // Butona sanal olarak tıkla (Animasyon ve ses çalışır)
+                    btnTakePhoto.performClick();
+                }
+            }
+
+            // "True" döndürerek sistemin bu tuşu başka amaçla (ses kısma vb.)
+            // kullanmasını engelliyoruz.
+            return true;
+        }
+
+        // Diğer tuşlar (Geri tuşu, Home vb.) normal çalışsın
+        return super.onKeyDown(keyCode, event);
+    }
+
     // Ekran açısına değil, fiziksel tutuş açısına göre hesap yapar
     private int getJpegOrientation() {
         // Arka kamera için formül: (Sensör Açısı + Cihaz Açısı) % 360
@@ -171,14 +202,32 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        // EĞER TELEFON ANDROID 13 VE ÜZERİYSE BU TEK SATIR YETERLİDİR:
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            setRecentsScreenshotEnabled(false);
+        }
+
+        setContentView(R.layout.activity_main);
+
+        // Navigasyon barını siyah yap
+        getWindow().setNavigationBarColor(android.graphics.Color.BLACK);
+
+// Eğer barın üzerindeki çizginin (pill) çok parlak olmasını istemiyorsan:
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            // Barın içindeki simgeleri/çizgiyi beyaz (light) tutar, arka plan siyah kalır
+            getWindow().getDecorView().setSystemUiVisibility(0);
+        }
+
+
+
         // Tam ekran modu - status bar ve navigation bar gizle
         getWindow().getDecorView().setSystemUiVisibility(
                 View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                         | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
                         | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
                         | View.SYSTEM_UI_FLAG_FULLSCREEN
-                        | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                        | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+
+
         );
 
         setContentView(R.layout.activity_main);
@@ -735,28 +784,17 @@ public class MainActivity extends AppCompatActivity {
             // Hesaplanan boyutu global değişkene ata
             imageDimension = previewSize;
 
-            /*
-            // --- ASPECT RATIO AYARI (OPEN CAMERA MANTIĞI) ---
+            // --- ASPECT RATIO AYARI ---
             if (imageDimension != null) {
-                int width = imageDimension.getWidth();
-                int height = imageDimension.getHeight();
-
-                // Eğer telefon PORTRAIT (Dik) ise, genişlik ve yüksekliği yer değiştir (Swap)
-                // Çünkü sensör yatay (Width > Height) ama ekran dik.
+                // Telefon DİK (Portrait) tutuluyorsa:
                 if (getResources().getConfiguration().orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT) {
-                    if (width > height) {
-                        int temp = width;
-                        width = height;
-                        height = temp;
-                    }
+                    // 3:4 oranı için (Genişlik < Yükseklik)
+                    textureView.setAspectRatio(imageDimension.getHeight(), imageDimension.getWidth());
+                } else {
+                    // Yan tutuluyorsa
+                    textureView.setAspectRatio(imageDimension.getWidth(), imageDimension.getHeight());
                 }
-
-                final int finalWidth = width;
-                final int finalHeight = height;
-                runOnUiThread(() -> textureView.setAspectRatio(finalWidth, finalHeight));
             }
-
-             */
 
             // --- 2. JPEG IMAGEREADER (4:3 ve En Büyük) ---
             android.util.Size largestJpeg = new android.util.Size(640, 480);
@@ -887,46 +925,50 @@ public class MainActivity extends AppCompatActivity {
         int rotation = getWindowManager().getDefaultDisplay().getRotation();
         android.graphics.Matrix matrix = new android.graphics.Matrix();
 
-        // 1. Görüntü (Buffer) ve Çerçeve (View) alanlarını tanımla
+        // 1. Sensör verisini (Buffer) ve Ekranı (View) Tanımla
+        // PÜF NOKTA: BufferRect için (Height, Width) ters veriyoruz.
+        // Bu sayede Matrix, yatay gelen sensör verisini dikey ekrana otomatik eşliyor.
         android.graphics.RectF viewRect = new android.graphics.RectF(0, 0, viewWidth, viewHeight);
         android.graphics.RectF bufferRect = new android.graphics.RectF(0, 0, imageDimension.getHeight(), imageDimension.getWidth());
 
         float centerX = viewRect.centerX();
         float centerY = viewRect.centerY();
 
-        // 2. Buffer'ı merkeze taşı (Sola yaslanmayı çözer)
+        // 2. Buffer'ı merkeze taşı ve View içine oturt
         bufferRect.offset(centerX - bufferRect.centerX(), centerY - bufferRect.centerY());
+        matrix.setRectToRect(viewRect, bufferRect, android.graphics.Matrix.ScaleToFit.CENTER);
 
-        // 3. Görüntüyü çerçeveye sığdır (ScaleToFit.FILL)
-        // Bu işlem görüntüyü çerçeve boyutuna getirir
-        matrix.setRectToRect(viewRect, bufferRect, android.graphics.Matrix.ScaleToFit.FILL);
-
-        // 4. Ölçekleme Hesapla (Boşlukları doldurmak için)
+        // 3. Ölçekleme (Doluluk) Hesabı
+        // Görüntünün 3:4 çerçeveyi tam doldurması (boşluk kalmaması) için scale hesaplıyoruz.
         float scale = Math.max(
-                (float) viewHeight / imageDimension.getHeight(),
-                (float) viewWidth / imageDimension.getWidth());
+                (float) viewHeight / imageDimension.getWidth(),
+                (float) viewWidth / imageDimension.getHeight());
 
-        // 5. ROTATION KONTROLÜ
-        // Eğer cihaz DİK (Rotation 0) veya TERS (Rotation 180) ise
-        if (Surface.ROTATION_0 == rotation || Surface.ROTATION_180 == rotation) {
-            // Sadece ortala ve büyüt (Döndürme YOK)
-            matrix.setRectToRect(viewRect, bufferRect, android.graphics.Matrix.ScaleToFit.FILL);
-
-            // Eğer görüntü basıksa (squashed) bu scale değerlerini değiştirerek düzeltebiliriz.
-            // Şimdilik sadece çerçeveyi doldurmaya odaklanıyoruz.
+        // 4. Rotasyon ve Ölçeklemeyi Uygula
+        if (android.view.Surface.ROTATION_0 == rotation) {
+            // Telefon DİK (Normal Tutuş)
             matrix.postScale(scale, scale, centerX, centerY);
-
-            // NOT: Eğer görüntü yan yatıyorsa buraya 'matrix.postRotate(90, centerX, centerY);' eklenebilir.
-            // Ama sen "0'da düzgün" dediğin için eklemiyorum.
+            matrix.postRotate(0, centerX, centerY); // Dönüş yok, setRectToRect zaten hizaladı
         }
-        // Eğer cihaz YAN (Landscape) ise
-        else if (Surface.ROTATION_90 == rotation || Surface.ROTATION_270 == rotation) {
+        else if (android.view.Surface.ROTATION_180 == rotation) {
+            // Telefon Baş Aşağı
             matrix.postScale(scale, scale, centerX, centerY);
-            matrix.postRotate(90 * (rotation - 2), centerX, centerY);
+            matrix.postRotate(180, centerX, centerY);
+        }
+        else if (android.view.Surface.ROTATION_90 == rotation) {
+            // Sola Yatık (Landscape)
+            matrix.postScale(scale, scale, centerX, centerY);
+            matrix.postRotate(90, centerX, centerY);
+        }
+        else if (android.view.Surface.ROTATION_270 == rotation) {
+            // Sağa Yatık (Landscape Ters)
+            matrix.postScale(scale, scale, centerX, centerY);
+            matrix.postRotate(270, centerX, centerY);
         }
 
         textureView.setTransform(matrix);
     }
+
 
     private void updatePreview() {
         if (cameraDevice == null) return;
@@ -1255,57 +1297,108 @@ public class MainActivity extends AppCompatActivity {
         if (mBackgroundThread != null) {
             mBackgroundThread.quitSafely();
             try {
-                mBackgroundThread.join();
+                mBackgroundThread.join(); // Thread tamamen bitene kadar bekle
                 mBackgroundThread = null;
                 mBackgroundHandler = null;
-            } catch (InterruptedException e) { e.printStackTrace(); }
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
         }
     }
-
     @Override
     protected void onResume() {
         super.onResume();
+
         startBackgroundThread();
+
         // Sensörü aç
         if (orientationEventListener != null && orientationEventListener.canDetectOrientation()) {
             orientationEventListener.enable();
         }
+
         if (textureView.isAvailable()) {
             openCamera();
+            // EKLENEN KISIM: Geri dönüşte uzama sorununu önlemek için ayarı tazele
+            textureView.postDelayed(() -> {
+                configureTransform(textureView.getWidth(), textureView.getHeight());
+            }, 500); // Yarım saniye bekle ve düzelt
         } else {
             textureView.setSurfaceTextureListener(textureListener);
         }
     }
 
     @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+
+        if (hasFocus) {
+            // 1. ODAK GELDİ (Uygulamadasın)
+            // Ekran görüntüsü almaya izin ver
+            getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
+
+            // Perdeyi kaldır
+            if (shutterFlash != null) {
+                shutterFlash.setVisibility(View.GONE);
+            }
+
+        } else {
+            // 2. ODAK KAYBOLDU (Bildirim paneli, Recents ekranı veya Ana Menüye dönülüyor)
+            // HEMEN Gizlilik Modunu Aç
+            getWindow().setFlags(
+                    android.view.WindowManager.LayoutParams.FLAG_SECURE,
+                    android.view.WindowManager.LayoutParams.FLAG_SECURE
+            );
+
+            // Garanti olsun diye Siyah Perdeyi de indir (Sistem bayrağı yetişemezse bu yetişir)
+            if (shutterFlash != null) {
+                shutterFlash.animate().cancel(); // Varsa animasyonu durdur
+                shutterFlash.setAlpha(1f);       // Tam opak
+                shutterFlash.setVisibility(View.VISIBLE);
+            }
+        }
+    }
+
+    @Override
     protected void onPause() {
-        // Sensörü kapat
+        // 1. Oryantasyon sensörünü sustur
         if (orientationEventListener != null) {
             orientationEventListener.disable();
         }
 
+        // 2. Kamerayı ve oturumu kapat
         closeCamera();
+
+        // 3. İşlemciyi yoran thread'i durdur
         stopBackgroundThread();
+
         super.onPause();
     }
 
     // Add this method to properly close the camera
     private void closeCamera() {
-        if (null != cameraCaptureSessions) {
-            cameraCaptureSessions.close();
-            cameraCaptureSessions = null;
-        }
-        if (null != cameraDevice) {
-            cameraDevice.close();
-            cameraDevice = null;
-        }
-        if (null != imageReader) {
-            imageReader.close();
-            imageReader = null;
-        }
-        if (null != imageReaderRaw) {
-            imageReaderRaw.close();
-            imageReaderRaw = null;
+        try {
+            // 1. Önce oturumu kapat
+            if (null != cameraCaptureSessions) {
+                cameraCaptureSessions.stopRepeating(); // Yayını durdur
+                cameraCaptureSessions.close();
+                cameraCaptureSessions = null;
+            }
+            // 2. Kamera cihazını kapat
+            if (null != cameraDevice) {
+                cameraDevice.close();
+                cameraDevice = null;
+            }
+            // 3. ImageReader'ları temizle (Bellek sızıntısı için kritik)
+            if (null != imageReader) {
+                imageReader.close();
+                imageReader = null;
+            }
+            if (null != imageReaderRaw) {
+                imageReaderRaw.close();
+                imageReaderRaw = null;
+            }
+        } catch (CameraAccessException e) {
+            e.printStackTrace();
         }
     }
 

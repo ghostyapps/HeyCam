@@ -50,16 +50,16 @@
 
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/preview_card_container"
+        app:cardBackgroundColor="@android:color/black"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:layout_marginStart="20dp"
-        android:layout_marginEnd="20dp"
+        android:layout_marginHorizontal="10dp"
         app:layout_constraintDimensionRatio="3:4"
         app:layout_constraintTop_toBottomOf="@id/top_info_bar"
         app:layout_constraintBottom_toTopOf="@id/bottom_panel_container"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:cardCornerRadius="28dp">
+        app:cardCornerRadius="20dp">
 
         <com.ghostyapps.heycam.AutoFitTextureView
             android:id="@+id/texture_view"
