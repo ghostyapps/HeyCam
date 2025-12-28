@@ -17,3 +17,6 @@ local.properties
 *.jks
 *.keystore
 *.log
+*.apk
+app/release/
+output-metadata.json

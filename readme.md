@@ -52,9 +52,6 @@ RAW files capture pure sensor data without processing. They may look:
 
 This is **not** poor quality - it's **unprocessed reality**. Edit RAW files in Lightroom, Snapseed, or any RAW editor to achieve your desired look with maximum flexibility.
 
-## Screenshots
-
-*Coming soon*
 
 ## Installation
 
@@ -81,9 +78,6 @@ This is **not** poor quality - it's **unprocessed reality**. Edit RAW files in L
 
 Found a bug or have a feature request? Feel free to open an issue!
 
-## License
-
-*Add your preferred license here*
 
 ## Acknowledgments
 
