@@ -8,15 +8,13 @@
     android:background="@android:color/black"
     tools:context=".MainActivity">
 
-    <!-- ========================================== -->
-    <!-- 1. ÜST BİLGİ BARI                          -->
-    <!-- ========================================== -->
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/top_info_bar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:paddingTop="90dp"
-        android:paddingBottom="10dp"
+        android:paddingTop="50dp"
+        android:paddingBottom="5dp"
+        android:elevation="10dp"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
@@ -25,7 +23,7 @@
             android:id="@+id/txt_iso_display"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="45dp"
+            android:layout_marginStart="35dp"
             android:fontFamily="@font/productsans_bold"
             android:text="ISO: 100"
             android:textColor="@android:color/white"
@@ -39,7 +37,7 @@
             android:id="@+id/btn_format_indicator"
             android:layout_width="40dp"
             android:layout_height="40dp"
-            android:layout_marginEnd="45dp"
+            android:layout_marginEnd="35dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:scaleType="fitCenter"
             android:src="@drawable/ic_jpeg_indicator"
@@ -50,88 +48,71 @@
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 
-    <!-- ========================================== -->
-    <!-- 2. PREVIEW PENCERESİ (3:4 ORANI SABİT)     -->
-    <!-- ========================================== -->
-    <!-- layout_marginBottom="20dp": Alt menüden uzaklaşma payı -->
-    <androidx.cardview.widget.CardView
+    <com.google.android.material.card.MaterialCardView
         android:id="@+id/preview_card_container"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:layout_marginHorizontal="8dp"
-        android:layout_marginTop="0dp"
-        android:layout_marginBottom="20dp"
-        app:cardCornerRadius="24dp"
-        app:cardElevation="0dp"
-        app:cardBackgroundColor="@android:color/black"
+        android:layout_marginStart="20dp"
+        android:layout_marginEnd="20dp"
         app:layout_constraintDimensionRatio="3:4"
+        app:layout_constraintTop_toBottomOf="@id/top_info_bar"
+        app:layout_constraintBottom_toTopOf="@id/bottom_panel_container"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/top_info_bar"
-        app:layout_constraintBottom_toTopOf="@id/bottom_panel_container">
+        app:cardCornerRadius="28dp">
 
-        <!-- RelativeLayout: İçindeki elemanları üst üste bindirmek için -->
-        <RelativeLayout
+        <com.ghostyapps.heycam.AutoFitTextureView
+            android:id="@+id/texture_view"
             android:layout_width="match_parent"
-            android:layout_height="match_parent">
+            android:layout_height="match_parent" />
 
-            <!-- 1. TEXTUREVIEW (En altta) -->
-            <com.ghostyapps.heycam.AutoFitTextureView
-                android:id="@+id/texture_view"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent" />
+        <View
+            android:id="@+id/focus_ring"
+            android:layout_width="50dp"
+            android:layout_height="50dp"
+            android:background="@drawable/focus_ring"
+            android:visibility="invisible"
+            android:elevation="100dp"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+        <View
+            android:id="@+id/shutter_flash"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="#000000"
+            android:alpha="0"
+            android:elevation="110dp"/>
 
-            <!-- 2. FOCUS HALKASI -->
-            <View
-                android:id="@+id/focus_ring"
-                android:layout_width="50dp"
-                android:layout_height="50dp"
-                android:background="@drawable/focus_ring"
-                android:visibility="invisible" />
+        <TextView
+            android:id="@+id/custom_toast"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_toast_pill"
+            android:paddingHorizontal="20dp"
+            android:paddingVertical="10dp"
+            android:textColor="@android:color/white"
+            android:textSize="13sp"
+            android:fontFamily="@font/productsans_bold"
+            android:letterSpacing="0.05"
+            android:visibility="gone"
+            android:elevation="60dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"/>
 
-            <!-- 3. FLASH EFEKTİ -->
-            <View
-                android:id="@+id/shutter_flash"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:background="#000000"
-                android:alpha="0" />
+    </com.google.android.material.card.MaterialCardView>
 
-            <TextView
-                android:id="@+id/custom_toast"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_centerInParent="true"
-                android:background="@drawable/bg_toast_pill"
-                android:paddingHorizontal="20dp"
-                android:paddingVertical="10dp"
-                android:textColor="@android:color/white"
-                android:textSize="13sp"
-                android:fontFamily="@font/productsans_bold"
-                android:letterSpacing="0.05"
-                android:visibility="gone"
-                android:elevation="20dp" />
-
-
-
-        </RelativeLayout>
-    </androidx.cardview.widget.CardView>
-
-
-    <!-- ========================================== -->
-    <!-- 3. ALT KONTROL PANELİ (HEPSİ BİR ARADA)    -->
-    <!-- ========================================== -->
     <LinearLayout
         android:id="@+id/bottom_panel_container"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:paddingBottom="120dp"
+        android:paddingBottom="50dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
-        <!-- RULER (TEKERLEK) -->
         <RelativeLayout
             android:id="@+id/shutter_wheel_container"
             android:layout_width="match_parent"
@@ -161,7 +142,6 @@
                 android:elevation="10dp" />
         </RelativeLayout>
 
-        <!-- SHUTTER / ISO YAZILARI -->
         <LinearLayout
             android:id="@+id/mode_selector_container"
             android:layout_width="wrap_content"
@@ -202,7 +182,6 @@
                 android:padding="8dp" />
         </LinearLayout>
 
-        <!-- BUTONLAR (GALERİ - DEKLANŞÖR - MOD) -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -211,8 +190,8 @@
 
             <ImageButton
                 android:id="@+id/btn_gallery"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
+                android:layout_width="30dp"
+                android:layout_height="30dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:scaleType="fitCenter"
                 android:src="@drawable/ic_gallery_indicator"
@@ -226,14 +205,14 @@
                 android:layout_height="80dp"
                 android:background="@null"
                 android:scaleType="fitCenter"
-                android:src="@drawable/ic_shutter_button" />
+                android:src="@drawable/take_photo_selector" />
 
             <View android:layout_width="50dp" android:layout_height="1dp" />
 
             <ImageButton
                 android:id="@+id/btn_mode_switch"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
+                android:layout_width="30dp"
+                android:layout_height="30dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:scaleType="fitCenter"
                 android:src="@drawable/ic_auto_indicator"

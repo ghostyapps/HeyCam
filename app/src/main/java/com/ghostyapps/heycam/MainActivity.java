@@ -27,7 +27,11 @@ import android.view.ViewGroup;
 import android.widget.ImageButton;
 import android.widget.TextView;
 import android.widget.Toast;
-
+import android.graphics.Matrix;
+import android.graphics.SurfaceTexture;
+import android.util.Size;
+import android.graphics.Matrix;
+import android.graphics.RectF;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
@@ -43,6 +47,11 @@ import java.util.Collections;
 import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
+
+    private View previewCardParent;
+
+    // Tekerlek titreşimi için son pozisyonu tutar
+    private int lastHapticPos = -1;
 
     private static final String TAG = "HeyCam";
     private static final int REQUEST_CAMERA_PERMISSION = 200;
@@ -114,6 +123,34 @@ public class MainActivity extends AppCompatActivity {
     private android.os.Handler toastHandler = new android.os.Handler(android.os.Looper.getMainLooper());
     private Runnable hideToastRunnable;
 
+    private androidx.cardview.widget.CardView previewCard;
+
+    private void updateCardViewSize(Size previewSize) {
+        if (previewSize == null || previewCard == null) return;
+
+        runOnUiThread(() -> {
+            // 1. Ekran Genişliğini Al
+            android.util.DisplayMetrics metrics = getResources().getDisplayMetrics();
+            int screenWidth = metrics.widthPixels;
+
+            // 2. Sensör Oranını Hesapla (Genellikle Width > Height gelir, yani Landscape)
+            // Telefon dik olduğu için biz (Uzun Kenar / Kısa Kenar) oranını bulmalıyız.
+            float ratio = (float) Math.max(previewSize.getWidth(), previewSize.getHeight()) /
+                    (float) Math.min(previewSize.getWidth(), previewSize.getHeight());
+
+            // 3. Yeni Yüksekliği Hesapla: Genişlik * Oran (Örn: Genişlik * 1.333)
+            int newHeight = Math.round(screenWidth * ratio);
+
+            // 4. CardView Boyutunu Güncelle
+            android.view.ViewGroup.LayoutParams params = previewCard.getLayoutParams();
+            params.width = screenWidth; // Genişlik ekran kadar olsun
+            params.height = newHeight;  // Yükseklik hesaplanan oran kadar
+            previewCard.setLayoutParams(params);
+
+            android.util.Log.d("HeyCam", "CardView güncellendi: " + screenWidth + "x" + newHeight + " (Oran: " + ratio + ")");
+        });
+    }
+
 
 
     @Override
@@ -141,6 +178,7 @@ public class MainActivity extends AppCompatActivity {
         // Cetvel ve Görsel Efektler
         rulerRecycler = findViewById(R.id.shutter_recycler);
         focusRing = findViewById(R.id.focus_ring);
+        previewCardParent = findViewById(R.id.preview_card_container);
         wheelNeedle = findViewById(R.id.wheel_needle);
         shutterFlash = findViewById(R.id.shutter_flash);
 
@@ -175,6 +213,9 @@ public class MainActivity extends AppCompatActivity {
             if (event.getAction() == android.view.MotionEvent.ACTION_UP) {
                 float x = event.getX();
                 float y = event.getY();
+
+                // Artık Focus Ring de kartın içinde olduğu için
+                // dokunma koordinatı (x,y) ile halkanın yeri aynıdır.
                 showFocusRect(x, y);
                 startFocus(x, y);
             }
@@ -258,6 +299,10 @@ public class MainActivity extends AppCompatActivity {
 
         // --- 4. FOTOĞRAF ÇEKME ---
         btnTakePhoto.setOnClickListener(v -> {
+            // EKLENEN SATIR: Haptic Feedback (Titreşim)
+            // VIRTUAL_KEY: Standart Android tuş titreşimi verir.
+            // Alternatif olarak KEYBOARD_TAP deneyebilirsin.
+            v.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
             shutterFlash.setAlpha(0.8f);
             shutterFlash.animate().alpha(0f).setDuration(150)
                     .start();
@@ -318,6 +363,18 @@ public class MainActivity extends AppCompatActivity {
                 super.onScrolled(recyclerView, dx, dy);
                 // Her piksel kaydığında Kemer/Fade efektini güncelle
                 updateRulerVisuals(layoutManager);
+                // --- EKLENEN KISIM: MEKANİK TİTREŞİM ---
+                // Tekerlek dönerken her yeni sayı merkeze geldiğinde titret
+                View centerView = snapHelper.findSnapView(layoutManager);
+                if (centerView != null) {
+                    int pos = layoutManager.getPosition(centerView);
+                    // Eğer pozisyon değiştiyse (yeni sayı geldiyse) ve -1 değilse
+                    if (pos != RecyclerView.NO_POSITION && pos != lastHapticPos) {
+                        // Hafif bir "tık" titreşimi (KEYBOARD_TAP daha hafiftir)
+                        recyclerView.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
+                        lastHapticPos = pos;
+                    }
+                }
             }
 
             @Override
@@ -534,7 +591,13 @@ public class MainActivity extends AppCompatActivity {
         public void onSurfaceTextureAvailable(@NonNull SurfaceTexture surface, int width, int height) {
             openCamera();
         }
-        @Override public void onSurfaceTextureSizeChanged(@NonNull SurfaceTexture s, int w, int h) {}
+
+        @Override
+        public void onSurfaceTextureSizeChanged(@NonNull SurfaceTexture s, int w, int h) {
+            // EKSİK OLAN PARÇA BU: Boyut değişince görüntüyü tekrar ortala
+            configureTransform(w, h);
+        }
+
         @Override public boolean onSurfaceTextureDestroyed(@NonNull SurfaceTexture s) { return false; }
         @Override public void onSurfaceTextureUpdated(@NonNull SurfaceTexture s) {}
     };
@@ -555,98 +618,117 @@ public class MainActivity extends AppCompatActivity {
     };
 
     private void openCamera() {
-        CameraManager manager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
+        android.hardware.camera2.CameraManager manager = (android.hardware.camera2.CameraManager) getSystemService(android.content.Context.CAMERA_SERVICE);
         try {
             String[] cameraIdList = manager.getCameraIdList();
             if (cameraIdList == null || cameraIdList.length == 0) return;
             cameraId = cameraIdList[0];
-            CameraCharacteristics characteristics = manager.getCameraCharacteristics(cameraId);
+            android.hardware.camera2.CameraCharacteristics characteristics = manager.getCameraCharacteristics(cameraId);
 
             // RAW Kontrolü
-            int[] capabilities = characteristics.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES);
+            int[] capabilities = characteristics.get(android.hardware.camera2.CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES);
             mContainsRawCapability = false;
-            for (int cap : capabilities) {
-                if (cap == CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_RAW) {
-                    mContainsRawCapability = true;
-                    break;
+            if (capabilities != null) {
+                for (int cap : capabilities) {
+                    if (cap == android.hardware.camera2.CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_RAW) {
+                        mContainsRawCapability = true;
+                        break;
+                    }
                 }
             }
 
-            Integer sensorDir = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
+            Integer sensorDir = characteristics.get(android.hardware.camera2.CameraCharacteristics.SENSOR_ORIENTATION);
             mSensorOrientation = (sensorDir != null) ? sensorDir : 90;
 
-            // ÖNEMLİ: map değişkenini ÖNCE tanımla
-            StreamConfigurationMap map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
-            isoRange = characteristics.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE);
+            // Harita ve ISO Aralığı
+            android.hardware.camera2.params.StreamConfigurationMap map = characteristics.get(android.hardware.camera2.CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+            isoRange = characteristics.get(android.hardware.camera2.CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE);
 
-            // Dinamik ISO listesi oluştur
+            // Dinamik ISO Listesi
             if (isoRange != null) {
                 int minIso = isoRange.getLower();
                 int maxIso = isoRange.getUpper();
-
                 android.util.Log.d("HeyCam", "Cihaz ISO aralığı: " + minIso + " - " + maxIso);
 
-                // Standart ISO değerleri
                 int[] standardIsos = {50, 100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600, 51200};
-
                 ISO_STRINGS.clear();
                 for (int iso : standardIsos) {
                     if (iso >= minIso && iso <= maxIso) {
                         ISO_STRINGS.add(String.valueOf(iso));
                     }
                 }
-
-                // Eğer liste boşsa (çok nadir), en azından min ve max'ı ekle
                 if (ISO_STRINGS.isEmpty()) {
                     ISO_STRINGS.add(String.valueOf(minIso));
                     ISO_STRINGS.add(String.valueOf(maxIso));
                 }
-
-                android.util.Log.d("HeyCam", "Desteklenen ISO değerleri: " + ISO_STRINGS);
-
-                // currentIsoIndex'i güvenli bir değere ayarla
                 if (currentIsoIndex >= ISO_STRINGS.size()) {
                     currentIsoIndex = ISO_STRINGS.size() - 1;
                 }
-
-                // Başlangıç ISO'sunu ayarla
                 if (currentIsoIndex < ISO_STRINGS.size()) {
                     selectedIso = Integer.parseInt(ISO_STRINGS.get(currentIsoIndex));
                 }
             }
 
-            shutterRange = characteristics.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE);
-            sensorArraySize = characteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
+            shutterRange = characteristics.get(android.hardware.camera2.CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE);
+            sensorArraySize = characteristics.get(android.hardware.camera2.CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
 
             // FPS
-            Range<Integer>[] availableFpsRanges = characteristics.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES);
+            android.util.Range<Integer>[] availableFpsRanges = characteristics.get(android.hardware.camera2.CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES);
             if (availableFpsRanges != null && availableFpsRanges.length > 0) {
                 bestFpsRange = availableFpsRanges[availableFpsRanges.length - 1];
             }
 
-            // --- 1. PREVIEW BOYUTU SEÇİMİ (SADECE 4:3) ---
-            Size previewSize = new Size(640, 480);
+
+            // --- 1. PREVIEW BOYUTU (4:3 Öncelikli) ---
+            android.util.Size previewSize = new android.util.Size(640, 480); // Varsayılan
             if (map != null) {
-                Size[] sizes = map.getOutputSizes(SurfaceTexture.class);
+                android.util.Size[] sizes = map.getOutputSizes(android.graphics.SurfaceTexture.class);
                 if (sizes != null) {
-                    for (Size sz : sizes) {
+                    for (android.util.Size sz : sizes) {
                         float ratio = (float) sz.getWidth() / sz.getHeight();
+                        // 4:3 (1.33) oranına yakın olanları al
                         if (Math.abs(ratio - 1.3333f) < 0.05f) {
-                            if (sz.getWidth() * sz.getHeight() > previewSize.getWidth() * previewSize.getHeight()) {
+                            if ((long) sz.getWidth() * sz.getHeight() > (long) previewSize.getWidth() * previewSize.getHeight()) {
                                 previewSize = sz;
                             }
                         }
                     }
                 }
-                imageDimension = previewSize;
             }
 
-            // --- 2. JPEG IMAGEREADER (SADECE 4:3 VE EN BÜYÜK) ---
-            Size largestJpeg = new Size(640, 480);
+
+            // Hesaplanan boyutu global değişkene ata
+            imageDimension = previewSize;
+
+            /*
+            // --- ASPECT RATIO AYARI (OPEN CAMERA MANTIĞI) ---
+            if (imageDimension != null) {
+                int width = imageDimension.getWidth();
+                int height = imageDimension.getHeight();
+
+                // Eğer telefon PORTRAIT (Dik) ise, genişlik ve yüksekliği yer değiştir (Swap)
+                // Çünkü sensör yatay (Width > Height) ama ekran dik.
+                if (getResources().getConfiguration().orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT) {
+                    if (width > height) {
+                        int temp = width;
+                        width = height;
+                        height = temp;
+                    }
+                }
+
+                final int finalWidth = width;
+                final int finalHeight = height;
+                runOnUiThread(() -> textureView.setAspectRatio(finalWidth, finalHeight));
+            }
+
+             */
+
+            // --- 2. JPEG IMAGEREADER (4:3 ve En Büyük) ---
+            android.util.Size largestJpeg = new android.util.Size(640, 480);
             if (map != null) {
-                Size[] jpegSizes = map.getOutputSizes(android.graphics.ImageFormat.JPEG);
+                android.util.Size[] jpegSizes = map.getOutputSizes(android.graphics.ImageFormat.JPEG);
                 if (jpegSizes != null) {
-                    for (Size sz : jpegSizes) {
+                    for (android.util.Size sz : jpegSizes) {
                         float ratio = (float) sz.getWidth() / sz.getHeight();
                         if (Math.abs(ratio - 1.3333f) < 0.05f) {
                             if ((long) sz.getWidth() * sz.getHeight() > (long) largestJpeg.getWidth() * largestJpeg.getHeight()) {
@@ -670,63 +752,56 @@ public class MainActivity extends AppCompatActivity {
                 } catch (Exception e) { e.printStackTrace(); }
             }, mBackgroundHandler);
 
-            // --- 3. RAW READER (ARTIK map TANIMLI) ---
+            // --- 3. RAW IMAGEREADER ---
             if (mContainsRawCapability && map != null) {
-                android.util.Log.d("HeyCam", "RAW desteği var, ImageReader kuruluyor...");
-                Size[] rawSizes = map.getOutputSizes(android.graphics.ImageFormat.RAW_SENSOR);
+                android.util.Size[] rawSizes = map.getOutputSizes(android.graphics.ImageFormat.RAW_SENSOR);
                 if (rawSizes != null && rawSizes.length > 0) {
-                    Size largestRaw = rawSizes[0];
-                    for (Size sz : rawSizes) {
+                    android.util.Size largestRaw = rawSizes[0];
+                    for (android.util.Size sz : rawSizes) {
                         if ((long) sz.getWidth() * sz.getHeight() > (long) largestRaw.getWidth() * largestRaw.getHeight()) {
                             largestRaw = sz;
                         }
                     }
+
                     if (imageReaderRaw != null) imageReaderRaw.close();
                     imageReaderRaw = android.media.ImageReader.newInstance(largestRaw.getWidth(), largestRaw.getHeight(), android.graphics.ImageFormat.RAW_SENSOR, 2);
                     imageReaderRaw.setOnImageAvailableListener(reader -> {
-                        android.util.Log.d("HeyCam", "RAW ImageReader callback tetiklendi!");
                         try (android.media.Image image = reader.acquireNextImage()) {
-                            android.util.Log.d("HeyCam", "RAW image alındı: " + (image != null));
-                            android.util.Log.d("HeyCam", "mLastResult: " + (mLastResult != null));
                             if (image != null && mLastResult != null) {
-                                android.util.Log.d("HeyCam", "saveRaw çağrılıyor...");
                                 saveRaw(image, mLastResult, characteristics);
-                            } else {
-                                android.util.Log.e("HeyCam", "image null: " + (image == null) + ", mLastResult null: " + (mLastResult == null));
                             }
                         } catch (Exception e) {
-                            android.util.Log.e("HeyCam", "RAW kayıt hatası: " + e.getMessage());
                             e.printStackTrace();
                         }
                     }, mBackgroundHandler);
-                    android.util.Log.d("HeyCam", "RAW ImageReader kuruldu. Boyut: " + largestRaw.getWidth() + "x" + largestRaw.getHeight());
-                } else {
-                    android.util.Log.w("HeyCam", "RAW boyutları bulunamadı");
                 }
-            } else {
-                android.util.Log.w("HeyCam", "RAW desteklenmiyor veya map null. mContainsRawCapability: " + mContainsRawCapability);
             }
 
-            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.CAMERA}, REQUEST_CAMERA_PERMISSION);
+            // İzin Kontrolü ve Kamerayı Açma
+            if (androidx.core.app.ActivityCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                androidx.core.app.ActivityCompat.requestPermissions(this, new String[]{android.Manifest.permission.CAMERA}, REQUEST_CAMERA_PERMISSION);
                 return;
             }
             manager.openCamera(cameraId, stateCallback, mBackgroundHandler);
-        } catch (CameraAccessException e) {
+
+        } catch (android.hardware.camera2.CameraAccessException e) {
             e.printStackTrace();
         }
     }
-
 
     private void createCameraPreview() {
         try {
             SurfaceTexture texture = textureView.getSurfaceTexture();
             assert texture != null;
 
-            // Buffer boyutunu ayarla (4:3 olarak seçtiğimiz imageDimension)
-            texture.setDefaultBufferSize(imageDimension.getWidth(), imageDimension.getHeight());
+            // Buffer boyutunu ayarla
+            if (imageDimension != null) {
+                texture.setDefaultBufferSize(imageDimension.getWidth(), imageDimension.getHeight());
+            }
+
             Surface surface = new Surface(texture);
 
+            // DÜZELTME: 'RequestBuilder' yerine 'captureRequestBuilder' kullanıyoruz
             captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
             captureRequestBuilder.addTarget(surface);
 
@@ -752,9 +827,7 @@ public class MainActivity extends AppCompatActivity {
 
                     cameraCaptureSessions = cameraCaptureSession;
 
-                    // --- KRİTİK DÜZELTME: TRANSFORM ---
-                    // Görüntünün ekrana sığarken ezilmesini engellemek için
-                    // TextureView'ın Matrix'ini (Döndürme/Ölçekleme) güncelliyoruz.
+                    // Matrix ayarını yap
                     configureTransform(textureView.getWidth(), textureView.getHeight());
 
                     updatePreview();
@@ -764,38 +837,61 @@ public class MainActivity extends AppCompatActivity {
                 public void onConfigureFailed(@NonNull CameraCaptureSession cameraCaptureSession) {
                     Toast.makeText(MainActivity.this, "Camera preview failed", Toast.LENGTH_SHORT).show();
                 }
-            }, null);
+            }, mBackgroundHandler);
 
         } catch (CameraAccessException e) {
             e.printStackTrace();
         }
     }
 
-
     private void configureTransform(int viewWidth, int viewHeight) {
         if (null == textureView || null == imageDimension) {
             return;
         }
+
         int rotation = getWindowManager().getDefaultDisplay().getRotation();
         android.graphics.Matrix matrix = new android.graphics.Matrix();
+
+        // 1. Görüntü (Buffer) ve Çerçeve (View) alanlarını tanımla
         android.graphics.RectF viewRect = new android.graphics.RectF(0, 0, viewWidth, viewHeight);
         android.graphics.RectF bufferRect = new android.graphics.RectF(0, 0, imageDimension.getHeight(), imageDimension.getWidth());
+
         float centerX = viewRect.centerX();
         float centerY = viewRect.centerY();
-        if (Surface.ROTATION_90 == rotation || Surface.ROTATION_270 == rotation) {
-            bufferRect.offset(centerX - bufferRect.centerX(), centerY - bufferRect.centerY());
+
+        // 2. Buffer'ı merkeze taşı (Sola yaslanmayı çözer)
+        bufferRect.offset(centerX - bufferRect.centerX(), centerY - bufferRect.centerY());
+
+        // 3. Görüntüyü çerçeveye sığdır (ScaleToFit.FILL)
+        // Bu işlem görüntüyü çerçeve boyutuna getirir
+        matrix.setRectToRect(viewRect, bufferRect, android.graphics.Matrix.ScaleToFit.FILL);
+
+        // 4. Ölçekleme Hesapla (Boşlukları doldurmak için)
+        float scale = Math.max(
+                (float) viewHeight / imageDimension.getHeight(),
+                (float) viewWidth / imageDimension.getWidth());
+
+        // 5. ROTATION KONTROLÜ
+        // Eğer cihaz DİK (Rotation 0) veya TERS (Rotation 180) ise
+        if (Surface.ROTATION_0 == rotation || Surface.ROTATION_180 == rotation) {
+            // Sadece ortala ve büyüt (Döndürme YOK)
             matrix.setRectToRect(viewRect, bufferRect, android.graphics.Matrix.ScaleToFit.FILL);
-            float scale = Math.max(
-                    (float) viewHeight / imageDimension.getHeight(),
-                    (float) viewWidth / imageDimension.getWidth());
+
+            // Eğer görüntü basıksa (squashed) bu scale değerlerini değiştirerek düzeltebiliriz.
+            // Şimdilik sadece çerçeveyi doldurmaya odaklanıyoruz.
+            matrix.postScale(scale, scale, centerX, centerY);
+
+            // NOT: Eğer görüntü yan yatıyorsa buraya 'matrix.postRotate(90, centerX, centerY);' eklenebilir.
+            // Ama sen "0'da düzgün" dediğin için eklemiyorum.
+        }
+        // Eğer cihaz YAN (Landscape) ise
+        else if (Surface.ROTATION_90 == rotation || Surface.ROTATION_270 == rotation) {
             matrix.postScale(scale, scale, centerX, centerY);
             matrix.postRotate(90 * (rotation - 2), centerX, centerY);
-        } else if (Surface.ROTATION_180 == rotation) {
-            matrix.postRotate(180, centerX, centerY);
         }
+
         textureView.setTransform(matrix);
     }
-
 
     private void updatePreview() {
         if (cameraDevice == null) return;
