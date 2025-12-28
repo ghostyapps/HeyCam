@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="70dp"
+    android:layout_height="match_parent"
+    android:clipChildren="false"
+    android:clipToPadding="false">
+
+    <!-- KATMAN 1: YAZI (Serbest) -->
+    <!-- Artık dar bir sütuna sıkışık değil, 70dp'nin tamamını kullanabilir -->
+    <!-- Hatta clipChildren=false olduğu için taşsa bile görünür -->
+    <TextView
+        android:id="@+id/txt_wheel_value"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_centerHorizontal="true"
+        android:layout_alignParentBottom="true"
+        android:layout_marginBottom="35dp"
+        android:fontFamily="@font/productsans_bold"
+        android:text="1/100"
+        android:textColor="@android:color/white"
+        android:textSize="13sp"
+        android:lines="1"
+        android:gravity="center" />
+    <!-- marginBottom="35dp": Çizgilerin üzerine gelmesi için yukarı ittik -->
+
+    <!-- KATMAN 2: ÇİZGİLER (Grid Sistemi) -->
+    <!-- Çizgiler hizalı kalsın diye LinearLayout ağırlık sistemini burada koruyoruz -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="horizontal"
+        android:gravity="bottom"
+        android:paddingBottom="12dp">
+
+        <!-- 1. SOL KÜÇÜK ÇİZGİ -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center_horizontal|bottom">
+            <View android:layout_width="1dp" android:layout_height="8dp" android:background="#444444" />
+        </LinearLayout>
+
+        <!-- 2. ORTA BÜYÜK ÇİZGİ -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center_horizontal|bottom">
+            <View android:id="@+id/tick_view" android:layout_width="2dp" android:layout_height="20dp" android:background="#AAAAAA" />
+        </LinearLayout>
+
+        <!-- 3. SAĞ KÜÇÜK ÇİZGİ -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center_horizontal|bottom">
+            <View android:layout_width="1dp" android:layout_height="8dp" android:background="#444444" />
+        </LinearLayout>
+
+    </LinearLayout>
+
+</RelativeLayout>
