@@ -95,6 +95,11 @@ public class MainActivity extends AppCompatActivity {
     private int selectedIso = 100;
     private long selectedShutter = 10000000L;
 
+    // Sensör Tabanlı Oryantasyon Takibi
+    private android.view.OrientationEventListener orientationEventListener;
+    private int currentDeviceOrientation = 0;
+
+
     // --- 3. CAMERA2 API BİLEŞENLERİ ---
     private String cameraId;
     private CameraDevice cameraDevice;
@@ -124,6 +129,15 @@ public class MainActivity extends AppCompatActivity {
     private Runnable hideToastRunnable;
 
     private androidx.cardview.widget.CardView previewCard;
+
+    // Ekran açısına değil, fiziksel tutuş açısına göre hesap yapar
+    private int getJpegOrientation() {
+        // Arka kamera için formül: (Sensör Açısı + Cihaz Açısı) % 360
+        // Sensör genelde 90 derecedir.
+        // Cihaz 0 (Dik) -> (90 + 0) = 90 (Doğru)
+        // Cihaz 270 (Sola Yatık) -> (90 + 270) = 360 -> 0 (Doğru, yatay kayıt)
+        return (mSensorOrientation + currentDeviceOrientation + 360) % 360;
+    }
 
     private void updateCardViewSize(Size previewSize) {
         if (previewSize == null || previewCard == null) return;
@@ -221,6 +235,27 @@ public class MainActivity extends AppCompatActivity {
             }
             return true;
         });
+
+        // --- 5. ORYANTASYON SENSÖRÜNÜ BAŞLAT ---
+        orientationEventListener = new android.view.OrientationEventListener(this) {
+            @Override
+            public void onOrientationChanged(int orientation) {
+                if (orientation == android.view.OrientationEventListener.ORIENTATION_UNKNOWN) return;
+
+                // Açıyı 90 derecelik katlara yuvarla (Snap)
+                // Örn: 85 -> 90, 10 -> 0
+                int newOrientation = (orientation + 45) / 90 * 90;
+
+                // 360 dereceyi 0 yap
+                if (newOrientation == 360) newOrientation = 0;
+
+                currentDeviceOrientation = newOrientation;
+            }
+        };
+
+        if (orientationEventListener.canDetectOrientation()) {
+            orientationEventListener.enable();
+        }
     }
     // --- UI SETUP & LOGIC ---
 
@@ -965,18 +1000,10 @@ public class MainActivity extends AppCompatActivity {
                 captureBuilder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON);
             }
 
-            // Oryantasyon Hesaplama
-            int rotation = getWindowManager().getDefaultDisplay().getRotation();
-            int surfaceRotation = 0;
-            switch (rotation) {
-                case Surface.ROTATION_0: surfaceRotation = 0; break;
-                case Surface.ROTATION_90: surfaceRotation = 90; break;
-                case Surface.ROTATION_180: surfaceRotation = 180; break;
-                case Surface.ROTATION_270: surfaceRotation = 270; break;
-            }
-            int jpegOrientation = (mSensorOrientation - surfaceRotation + 360) % 360;
-            captureBuilder.set(CaptureRequest.JPEG_ORIENTATION, jpegOrientation);
-            captureBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_START);
+            // --- YENİ KOD ---
+            // Doğrudan sensörden gelen açıyı kullan
+            int correctOrientation = getJpegOrientation();
+            captureBuilder.set(CaptureRequest.JPEG_ORIENTATION, correctOrientation);
 
             cameraCaptureSessions.capture(captureBuilder.build(), new CameraCaptureSession.CaptureCallback() {
                 @Override
@@ -1139,17 +1166,8 @@ public class MainActivity extends AppCompatActivity {
 
         android.hardware.camera2.DngCreator dngCreator = new android.hardware.camera2.DngCreator(characteristics, result);
 
-        // Oryantasyon Hesaplama
-        int rotation = getWindowManager().getDefaultDisplay().getRotation();
-        int surfaceRotation = 0;
-        switch (rotation) {
-            case Surface.ROTATION_0: surfaceRotation = 0; break;
-            case Surface.ROTATION_90: surfaceRotation = 90; break;
-            case Surface.ROTATION_180: surfaceRotation = 180; break;
-            case Surface.ROTATION_270: surfaceRotation = 270; break;
-        }
-
-        int jpegOrientation = (mSensorOrientation - surfaceRotation + 360) % 360;
+        // --- YENİ KOD ---
+        int jpegOrientation = getJpegOrientation();
 
         int exifOrientation;
         switch (jpegOrientation) {
@@ -1248,6 +1266,10 @@ public class MainActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         startBackgroundThread();
+        // Sensörü aç
+        if (orientationEventListener != null && orientationEventListener.canDetectOrientation()) {
+            orientationEventListener.enable();
+        }
         if (textureView.isAvailable()) {
             openCamera();
         } else {
@@ -1257,6 +1279,11 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onPause() {
+        // Sensörü kapat
+        if (orientationEventListener != null) {
+            orientationEventListener.disable();
+        }
+
         closeCamera();
         stopBackgroundThread();
         super.onPause();
