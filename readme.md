@@ -32,6 +32,23 @@ Since JPEG files still undergo some processing by Android's algorithms, I added 
 - **RAW (DNG)**: Zero processing, pure sensor data
 - Switch between formats by tapping the format indicator in the top menu
 
+## Advanced Color Grading
+
+### Custom LUT Support
+* **Standard Compatibility:** Users can now import standard `.cube` files to apply cinematic color grading to photos instantly.
+* **Seamless Integration:** Apply professional-grade color transforms directly within the camera pipeline.
+
+### LUT Manager
+A dedicated, immersive interface to manage your filter library:
+* **Import:** Load `.cube` files directly from your device storage.
+* **Rename:** Long-press any LUT to rename it, featuring a dynamic **Material Design** dialog for a refined user experience.
+* **Manage:** Easily delete unwanted filters or restore built-in defaults if needed.
+
+### Key Features
+* **No LUT Option:** Quickly revert to the original camera look without deleting your LUT files.
+* **Pre-loaded Presets:** Ships with a curated set of sample cinematic looks (assets) that are automatically installed on the first run.
+* **Dynamic UI:** Fluid transitions and a clean interface designed for high-performance color manipulation.
+
 ### Technical Details
 - **Rear camera only** - no front camera access
 - **Main camera sensor only** - Due to Android and manufacturer restrictions, access to ultra-wide or telephoto lenses is limited
