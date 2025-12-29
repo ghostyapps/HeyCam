@@ -19,6 +19,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
+        <!-- SOL TARAFTAKİ ISO BİLGİSİ -->
         <TextView
             android:id="@+id/txt_iso_display"
             android:layout_width="wrap_content"
@@ -33,6 +34,23 @@
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toBottomOf="parent"/>
 
+        <!-- YENİ EKLENEN LUT BUTONU -->
+        <!-- Format butonunun (sağdaki) soluna yapışır -->
+        <ImageButton
+            android:id="@+id/btn_lut_switch"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginEnd="10dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_lut_disabled"
+            android:alpha="0.9"
+            app:layout_constraintEnd_toStartOf="@+id/btn_format_indicator"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"/>
+
+        <!-- MEVCUT FORMAT (JPEG/RAW) BUTONU -->
+        <!-- En sağa yapışır -->
         <ImageButton
             android:id="@+id/btn_format_indicator"
             android:layout_width="40dp"
@@ -87,6 +105,8 @@
             android:id="@+id/custom_toast"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_gravity="bottom|center_horizontal"
+            android:layout_marginBottom="50dp"
             android:background="@drawable/bg_toast_pill"
             android:paddingHorizontal="20dp"
             android:paddingVertical="10dp"
@@ -95,11 +115,7 @@
             android:fontFamily="@font/productsans_bold"
             android:letterSpacing="0.05"
             android:visibility="gone"
-            android:elevation="60dp"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"/>
+            android:elevation="60dp" />
 
     </com.google.android.material.card.MaterialCardView>
 

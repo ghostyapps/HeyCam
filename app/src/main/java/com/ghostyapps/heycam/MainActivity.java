@@ -42,6 +42,10 @@ import androidx.recyclerview.widget.SnapHelper;
 
 import java.util.ArrayList;
 
+import java.io.File;
+
+import java.io.ByteArrayOutputStream;
+
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -49,6 +53,9 @@ import java.util.List;
 public class MainActivity extends AppCompatActivity {
 
     private View previewCardParent;
+
+    private ImageButton btnLut;
+    private android.content.SharedPreferences prefs;
 
     // Tekerlek titreşimi için son pozisyonu tutar
     private int lastHapticPos = -1;
@@ -209,6 +216,15 @@ public class MainActivity extends AppCompatActivity {
 
         setContentView(R.layout.activity_main);
 
+        prefs = getSharedPreferences("HeyCamSettings", MODE_PRIVATE);
+        btnLut = findViewById(R.id.btn_lut_switch);
+
+        btnLut.setOnClickListener(v -> {
+            // LUT Yöneticisini Aç
+            startActivity(new android.content.Intent(MainActivity.this, LutManagerActivity.class));
+        });
+
+
         // Navigasyon barını siyah yap
         getWindow().setNavigationBarColor(android.graphics.Color.BLACK);
 
@@ -267,6 +283,9 @@ public class MainActivity extends AppCompatActivity {
         setupButtons();
         setupRuler();
 
+        // --- HAZIR LUTLARI KOPYALA ---
+        copyDefaultLuts();
+
         // Başlangıç Ayarı: Auto Mod
         toggleUiForMode(false);
         txtIsoInfo.setText("HeyCam");
@@ -309,27 +328,51 @@ public class MainActivity extends AppCompatActivity {
     // --- UI SETUP & LOGIC ---
 
     private void setupButtons() {
+
+        // 1. SharedPreferences Başlat (Ayarları okumak için)
+        prefs = getSharedPreferences("HeyCamSettings", MODE_PRIVATE);
+
+        // 2. LUT Butonunu Bul ve Tıklama Ver
+        btnLut = findViewById(R.id.btn_lut_switch);
+        btnLut.setOnClickListener(v -> {
+            // Import sayfasına git
+            android.content.Intent intent = new android.content.Intent(MainActivity.this, LutManagerActivity.class);
+            startActivity(intent);
+        });
+
         // --- 1. GALERİ BUTONU ---
         ImageButton btnGallery = findViewById(R.id.btn_gallery);
         if (btnGallery != null) {
             btnGallery.setOnClickListener(v -> openLastPhoto());
         }
 
-        // --- 2. FORMAT DEĞİŞTİRİCİ (JPEG / RAW) ---
+        // --- FORMAT DEĞİŞTİRİCİ (JPEG / RAW) ---
         btnFormat.setOnClickListener(v -> {
             if (!mContainsRawCapability) {
                 Toast.makeText(this, "This device does not support RAW", Toast.LENGTH_SHORT).show();
                 return;
             }
             isRawMode = !isRawMode;
+
             if (isRawMode) {
+                // RAW MODU AÇILDI
                 btnFormat.setImageResource(R.drawable.ic_raw_indicator);
                 btnFormat.setAlpha(1.0f);
-                //Toast.makeText(this, "Format: RAW (DNG)", Toast.LENGTH_SHORT).show();
+
+                // LUT Butonunu Pasif Yap ve Gizle (veya Alpha düşür)
+                btnLut.setEnabled(false);
+                btnLut.setAlpha(0.3f);
+                showCenteredMessage("RAW Mode: LUTs Disabled");
+
             } else {
+                // JPEG MODU AÇILDI
                 btnFormat.setImageResource(R.drawable.ic_jpeg_indicator);
                 btnFormat.setAlpha(0.9f);
-                //Toast.makeText(this, "Format: JPEG", Toast.LENGTH_SHORT).show();
+
+                // LUT Butonunu Tekrar Aktif Et
+                btnLut.setEnabled(true);
+                updateLutIconState(); // Eski rengine (Aktif/Pasif) geri dönsün
+                // showCenteredMessage("JPEG Mode");
             }
         });
 
@@ -387,9 +430,28 @@ public class MainActivity extends AppCompatActivity {
             // VIRTUAL_KEY: Standart Android tuş titreşimi verir.
             // Alternatif olarak KEYBOARD_TAP deneyebilirsin.
             v.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
-            shutterFlash.setAlpha(0.8f);
-            shutterFlash.animate().alpha(0f).setDuration(150)
-                    .start();
+            if (shutterFlash != null) {
+                // 1. Önce görünür yap (Çünkü onWindowFocusChanged bunu GONE yapmıştı)
+                shutterFlash.setVisibility(View.VISIBLE);
+
+                // 2. En üste getir (Z-Order garantisi)
+                shutterFlash.bringToFront();
+
+                // 3. Simsiyah başla
+                shutterFlash.setAlpha(1f);
+
+                // 4. Hızlıca yok ol (Shutter Efekti)
+                shutterFlash.animate()
+                        .alpha(0f)
+                        .setDuration(150)
+                        .setStartDelay(50) // 50ms siyah kalsın ("Tak" hissi için)
+                        .withEndAction(() -> {
+                            // İş bitince tekrar GONE yap ki boşuna GPU çizmesin
+                            shutterFlash.setVisibility(View.GONE);
+                        })
+                        .start();
+            }
+
             takePicture();
         });
 
@@ -398,6 +460,55 @@ public class MainActivity extends AppCompatActivity {
         if (btnShutter != null) btnShutter.setOnClickListener(v -> switchWheelMode(WheelMode.SHUTTER));
     }
 
+
+
+    // --- HAZIR LUT'LARI YÜKLEME ---
+    private void copyDefaultLuts() {
+        // Daha önce yükledik mi kontrol et (Her açılışta tekrar yapmasın)
+        boolean isLutsInstalled = prefs.getBoolean("are_default_luts_installed", false);
+        if (isLutsInstalled) return;
+
+        // Arka planda çalıştıralım ki açılışı yavaşlatmasın
+        new Thread(() -> {
+            try {
+                // Assets/sample_luts klasöründeki dosyaları listele
+                String[] files = getAssets().list("sample_luts");
+                if (files == null) return;
+
+                File destDir = new File(getFilesDir(), "luts");
+                if (!destDir.exists()) destDir.mkdirs();
+
+                for (String filename : files) {
+                    // Sadece .cube dosyalarını al
+                    if (!filename.toLowerCase().endsWith(".cube")) continue;
+
+                    File outFile = new File(destDir, filename);
+
+                    // Eğer dosya zaten varsa üzerine yazma (Kullanıcı belki silmiştir, tekrar gelmesin)
+                    if (outFile.exists()) continue;
+
+                    try (java.io.InputStream in = getAssets().open("sample_luts/" + filename);
+                         java.io.FileOutputStream out = new java.io.FileOutputStream(outFile)) {
+
+                        byte[] buffer = new byte[1024];
+                        int read;
+                        while ((read = in.read(buffer)) != -1) {
+                            out.write(buffer, 0, read);
+                        }
+                    }
+                }
+
+                // İşlem bitti, bir daha yapma diye işaretle
+                prefs.edit().putBoolean("are_default_luts_installed", true).apply();
+
+                // (Opsiyonel) Log düş
+                android.util.Log.d("HeyCam", "Default LUTs copied successfully.");
+
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }).start();
+    }
 
 
     private void setupRuler() {
@@ -820,7 +931,75 @@ public class MainActivity extends AppCompatActivity {
                         java.nio.ByteBuffer buffer = image.getPlanes()[0].getBuffer();
                         byte[] bytes = new byte[buffer.remaining()];
                         buffer.get(bytes);
-                        if (bytes.length > 0) save(bytes);
+
+                        // --- LUT KONTROLÜ ---
+                        String currentLutName = prefs.getString("current_lut_name", null);
+
+                        if (currentLutName != null && !currentLutName.isEmpty()) {
+                            File lutFile = new File(getFilesDir(), "luts/" + currentLutName);
+                            if (lutFile.exists()) {
+                                showCenteredMessage("Applying LUT...");
+
+                                // 1. JPEG Bytes -> Bitmap (Mutable)
+                                android.graphics.BitmapFactory.Options opt = new android.graphics.BitmapFactory.Options();
+                                opt.inMutable = true;
+                                android.graphics.Bitmap bitmap = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.length, opt);
+
+                                if (bitmap != null) {
+                                    // --- DÜZELTME BAŞLANGICI: ROTASYON ---
+                                    // Gelen fotoğrafın EXIF bilgisini oku
+                                    try {
+                                        android.media.ExifInterface exif = new android.media.ExifInterface(new java.io.ByteArrayInputStream(bytes));
+                                        int orientation = exif.getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, android.media.ExifInterface.ORIENTATION_NORMAL);
+
+                                        int rotationInDegrees = 0;
+                                        if (orientation == android.media.ExifInterface.ORIENTATION_ROTATE_90) rotationInDegrees = 90;
+                                        else if (orientation == android.media.ExifInterface.ORIENTATION_ROTATE_180) rotationInDegrees = 180;
+                                        else if (orientation == android.media.ExifInterface.ORIENTATION_ROTATE_270) rotationInDegrees = 270;
+
+                                        // Eğer dönüş gerekliyse Bitmap'i fiziksel olarak döndür
+                                        if (rotationInDegrees != 0) {
+                                            android.graphics.Matrix matrix = new android.graphics.Matrix();
+                                            matrix.preRotate(rotationInDegrees);
+
+                                            // Eski bitmap'i döndürülmüş yeni bitmap ile değiştir
+                                            android.graphics.Bitmap rotatedBitmap = android.graphics.Bitmap.createBitmap(
+                                                    bitmap, 0, 0, bitmap.getWidth(), bitmap.getHeight(), matrix, true);
+
+                                            // Eskisini temizle, yenisini kullan
+                                            if (bitmap != rotatedBitmap) {
+                                                bitmap.recycle();
+                                                bitmap = rotatedBitmap;
+                                            }
+                                        }
+                                    } catch (Exception e) {
+                                        e.printStackTrace();
+                                    }
+                                    // --- DÜZELTME BİTİŞİ ---
+
+                                    // 2. LUT Uygula (Artık düzgün bitmap üzerindeyiz)
+                                    CubeLut lutProcessor = new CubeLut();
+                                    if (lutProcessor.load(lutFile)) {
+                                        lutProcessor.apply(bitmap);
+                                    }
+
+                                    // 3. Bitmap -> JPEG ve Kaydet
+                                    try (java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
+                                        bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, out);
+                                        byte[] newBytes = out.toByteArray();
+
+                                        save(newBytes);
+                                        bitmap.recycle();
+                                        return;
+                                    } catch (Exception e) {
+                                        e.printStackTrace();
+                                    }
+                                }
+                            }
+                        }
+
+                        // LUT yoksa normal kaydet (Burada EXIF korunur çünkü byte'lara dokunmuyoruz)
+                        save(bytes);
                     }
                 } catch (Exception e) { e.printStackTrace(); }
             }, mBackgroundHandler);
@@ -1311,6 +1490,8 @@ public class MainActivity extends AppCompatActivity {
 
         startBackgroundThread();
 
+
+
         // Sensörü aç
         if (orientationEventListener != null && orientationEventListener.canDetectOrientation()) {
             orientationEventListener.enable();
@@ -1324,6 +1505,22 @@ public class MainActivity extends AppCompatActivity {
             }, 500); // Yarım saniye bekle ve düzelt
         } else {
             textureView.setSurfaceTextureListener(textureListener);
+        }
+
+        updateLutIconState();
+    }
+
+    // Bu yardımcı metodu da sınıfın içine bir yere ekle
+    private void updateLutIconState() {
+        String currentLut = prefs.getString("current_lut_name", null);
+        if (currentLut != null && !currentLut.isEmpty()) {
+            // LUT Seçili -> Renkli/Aktif İkon
+            btnLut.setImageResource(R.drawable.ic_lut_enabled);
+            btnLut.setAlpha(1.0f);
+        } else {
+            // LUT Yok -> Sönük/Pasif İkon
+            btnLut.setImageResource(R.drawable.ic_lut_disabled);
+            btnLut.setAlpha(0.6f);
         }
     }
 

@@ -15,7 +15,6 @@
         </intent>
     </queries>
 
-
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -25,6 +24,8 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.HeyCam">
+
+        <!-- ANA KAMERA EKRANI -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -32,10 +33,17 @@
             android:theme="@style/Theme.HeyCam">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- LUT YÖNETİCİSİ -->
+        <!-- DÜZELTME: AppCompat yerine MaterialComponents kullanıyoruz ki butonlar çökmesin -->
+        <activity
+            android:name=".LutManagerActivity"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.MaterialComponents.DayNight.NoActionBar" />
+
     </application>
 
 </manifest>
