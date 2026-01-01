@@ -2,6 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <uses-sdk tools:overrideLibrary="com.nothing.ketchum" />
     <!-- İZİNLER -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
@@ -20,6 +21,8 @@
             <data android:mimeType="image/*" />
         </intent>
     </queries>
+
+
 
     <application
         android:allowBackup="true"

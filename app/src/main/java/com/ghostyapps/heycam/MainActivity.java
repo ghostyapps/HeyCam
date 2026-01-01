@@ -41,6 +41,8 @@ import androidx.recyclerview.widget.LinearSnapHelper;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.recyclerview.widget.SnapHelper;
 
+import com.nothing.ketchum.BuildConfig;
+
 import java.util.ArrayList;
 
 import java.io.File;
@@ -50,6 +52,7 @@ import java.io.ByteArrayOutputStream;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+
 
 public class MainActivity extends AppCompatActivity {
 
@@ -295,9 +298,15 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // Sadece hazırla, başlatma.
-        glyphHelper = new GlyphHelper();
-        glyphHelper.prepare(this);
+        // --- DEĞİŞİKLİK BAŞLANGICI ---
+        // GlyphHelper'ı sadece 'nothing' varyantıysa VE Android 14+ ise başlatıyoruz.
+        // Diğer durumlarda glyphHelper 'null' kalır ve uygulamanın geri kalanı bunu güvenle yok sayar.
+        // Başına paket ismini ekleyerek karışıklığı önlüyoruz
+        if (com.ghostyapps.heycam.BuildConfig.FLAVOR.equals("nothing") && android.os.Build.VERSION.SDK_INT >= 34) {
+            glyphHelper = new GlyphHelper();
+            glyphHelper.prepare(this);
+        }
+        // --- DEĞİŞİKLİK BİTİŞİ ---
 
         soundManager = new SoundManager();
         soundManager.init(this);
@@ -733,31 +742,30 @@ public class MainActivity extends AppCompatActivity {
 
         if (txtCountdownOverlay != null) txtCountdownOverlay.setVisibility(View.GONE);
 
-        // --- FİNAL DESENİ VE KAPANIŞ ---
-        if (glyphHelper != null) {
-            // 1. SES: Desenden önce çalsın (Anlık tepki)
+        // --- DÜZELTME BURADA ---
+        // Sesi dışarı aldık, artık her versiyonda çalar.
+        if (soundManager != null) {
             soundManager.playFinish();
+        }
 
-            // 2. GÖRÜNTÜ: Deseni gönder
+        // --- FİNAL DESENİ VE KAPANIŞ (Sadece Nothing için) ---
+        if (glyphHelper != null) {
+            // GÖRÜNTÜ: Deseni gönder
             glyphHelper.displayFinishPattern(currentDeviceOrientation);
 
-            // 3. SÜRE: Işık ne kadar açık kalsın? (2000ms = 2 Saniye)
+            // SÜRE: Işık ne kadar açık kalsın? (2000ms = 2 Saniye)
             new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-                // Kullanıcı araya girip yeni sayaç başlatmadıysa kapat
                 if (!isTimerRunning) {
-                    glyphHelper.clearDisplay(); // Söndür
-
-                    // Servisi bırak
+                    glyphHelper.clearDisplay();
                     new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
                         glyphHelper.disconnect();
                     }, 200);
                 }
-            }, 2000); // <-- BURAYI 2000 YAPTIK
+            }, 2000);
         }
 
         showCenteredMessage("Sequence Complete");
     }
-
 
 
 
@@ -1610,59 +1618,59 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void takePicture() {
-        if (cameraDevice == null) return;
+        if (cameraDevice == null || cameraCaptureSessions == null) return;
+
         try {
+            // 1. İsteği oluştur
             final CaptureRequest.Builder captureBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
 
-            // 1. HEDEF BELİRLEME
+            // 2. HEDEF BELİRLEME (Çökmenin yaşandığı kritik kısım burasıydı)
+            Surface targetSurface = null;
             if (isRawMode && mContainsRawCapability && imageReaderRaw != null) {
-                captureBuilder.addTarget(imageReaderRaw.getSurface());
-                // RAW Ayarları (Sıfır Müdahale)
+                targetSurface = imageReaderRaw.getSurface();
                 captureBuilder.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_OFF);
-                captureBuilder.set(CaptureRequest.COLOR_CORRECTION_MODE, CaptureRequest.COLOR_CORRECTION_MODE_TRANSFORM_MATRIX);
-                captureBuilder.set(CaptureRequest.TONEMAP_MODE, CaptureRequest.TONEMAP_MODE_FAST);
-            } else {
-                captureBuilder.addTarget(imageReader.getSurface());
+            } else if (imageReader != null) {
+                targetSurface = imageReader.getSurface();
             }
 
-            // --- 2. ZOOM SORUNU ÇÖZÜMÜ ---
-            // A) Kırpmayı Engelle (Tam sensör boyutunu kullan)
+            // Eğer hedef yoksa işlemi durdur (Crash koruması)
+            if (targetSurface == null) return;
+            captureBuilder.addTarget(targetSurface);
+
+            // 3. AYARLARI UYGULA (Zoom ve Pozlama)
             if (sensorArraySize != null) {
                 captureBuilder.set(CaptureRequest.SCALER_CROP_REGION, sensorArraySize);
             }
-
-            // B) Lens Düzeltmelerini Kapat (Bu düzeltmeler kenarları kırpar)
-            // Hem RAW hem JPEG için kapatıyoruz ki görüntü eşleşsin.
             captureBuilder.set(CaptureRequest.DISTORTION_CORRECTION_MODE, CaptureRequest.DISTORTION_CORRECTION_MODE_OFF);
-            // -----------------------------
 
-            // 3. POZLAMA AYARLARI
             if (isManualMode) {
                 captureBuilder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_OFF);
                 captureBuilder.set(CaptureRequest.SENSOR_SENSITIVITY, selectedIso);
                 captureBuilder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, selectedShutter);
-                android.util.Log.d("HeyCam", "Capture: Manual ISO=" + selectedIso);
             } else {
-                captureBuilder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
                 captureBuilder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON);
-
-                int targetEv = isRawMode ? 0 : mEvIndex;
-                captureBuilder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, targetEv);
-                android.util.Log.d("HeyCam", "Capture: Auto EV Index=" + targetEv);
+                captureBuilder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, mEvIndex);
             }
 
-            // 4. DİĞER AYARLAR
-            int correctOrientation = getJpegOrientation();
-            captureBuilder.set(CaptureRequest.JPEG_ORIENTATION, correctOrientation);
+            captureBuilder.set(CaptureRequest.JPEG_ORIENTATION, getJpegOrientation());
             captureBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
 
-            // 5. ÇEKİM
+            // 4. ÇEKİMİ BAŞLAT
             cameraCaptureSessions.capture(captureBuilder.build(), new CameraCaptureSession.CaptureCallback() {
                 @Override
                 public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
                     super.onCaptureCompleted(session, request, result);
                     mLastResult = result;
-                    android.util.Log.d("HeyCam", "Photo Taken!");
+
+                    // SARSINTI ÖNLEYİCİ: Çekim biter bitmez önizlemeyi tazeleyerek lensi sabit tutuyoruz
+                    try {
+                        // captureRequestBuilder (preview olan) kullanılıyor
+                        captureRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_CANCEL);
+                        session.capture(captureRequestBuilder.build(), null, mBackgroundHandler);
+                        updatePreview();
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
                 }
             }, mBackgroundHandler);
 
@@ -2086,36 +2094,48 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+
+
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
 
         if (hasFocus) {
-            // 1. ODAK GELDİ (Uygulamadasın)
-            // Ekran görüntüsü almaya izin ver
+            // Uygulamaya geri dönüldü veya Dialog kapandı
             getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
 
-            // Perdeyi kaldır
             if (shutterFlash != null) {
                 shutterFlash.setVisibility(View.GONE);
             }
-
         } else {
-            // 2. ODAK KAYBOLDU (Bildirim paneli, Recents ekranı veya Ana Menüye dönülüyor)
-            // HEMEN Gizlilik Modunu Aç
+            // Odak gitti. Eğer Timer Dialogu gibi bir şey açıksa
+            // perdeyi indirme, ama uygulama tamamen arka plana gidiyorsa indir.
+
+            // Önemli: Timer Dialogu açıldığında isTimerRunning henüz true olmayabilir
+            // veya kullanıcı sadece seçim yapıyordur.
+            // En temiz yol: Uygulama tamamen durdurulmadıysa (isFinishing/isPaused gibi) perdeyi çekme.
+
+            // Buradaki kontrolü "isFinishing" veya başka bir flag ile destekleyebilirsin
+            // ama Timer Dialogu için en garanti çözüm şudur:
+            if (!isFinishing()) {
+                // Dialog açıldı ama uygulama hala aktif, perdeyi çekme
+                return;
+            }
+
+            // Uygulama gerçekten arka plana gidiyor (Recents ekranı vb.)
             getWindow().setFlags(
                     android.view.WindowManager.LayoutParams.FLAG_SECURE,
                     android.view.WindowManager.LayoutParams.FLAG_SECURE
             );
 
-            // Garanti olsun diye Siyah Perdeyi de indir (Sistem bayrağı yetişemezse bu yetişir)
             if (shutterFlash != null) {
-                shutterFlash.animate().cancel(); // Varsa animasyonu durdur
-                shutterFlash.setAlpha(1f);       // Tam opak
+                shutterFlash.animate().cancel();
+                shutterFlash.setAlpha(1f);
                 shutterFlash.setVisibility(View.VISIBLE);
             }
         }
     }
+
 
     @Override
     protected void onPause() {

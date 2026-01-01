@@ -6,18 +6,36 @@ plugins {
 
 android {
     namespace = "com.ghostyapps.heycam"
-    compileSdk {
-        version = release(36)
-    }
+    compileSdk = 36 // (veya release(36) ise kalsın)
 
     defaultConfig {
         applicationId = "com.ghostyapps.heycam"
-        minSdk = 34
-        targetSdk = 36
+        minSdk = 28 // <-- DÜŞÜRÜLDÜ: Artık 28 yapıyoruz ki eski telefonlarda da çalışsın
+        targetSdk = 36 // (veya 36)
         versionCode = 1
-        versionName = "0.2.0"
+        versionName = "0.2.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    // --- EKLENMESİ GEREKEN KRİTİK KISIM BAŞLANGIÇ ---
+    buildFeatures {
+        compose = true
+        buildConfig = true // <-- BU SATIR KIRMIZILIĞI ÇÖZER
+    }
+
+    flavorDimensions.add("version")
+    productFlavors {
+        create("standard") {
+            dimension = "version"
+            minSdk = 28 // Standart cihazlar (Android 9+)
+            versionNameSuffix = "-standard"
+        }
+        create("nothing") {
+            dimension = "version"
+            minSdk = 34 // Nothing Phone (Android 14+)
+            versionNameSuffix = "-nothing"
+        }
     }
 
     buildTypes {
@@ -38,6 +56,16 @@ android {
     }
     buildFeatures {
         compose = true
+    }
+
+    applicationVariants.all {
+        val variant = this
+        variant.outputs.all {
+            val output = this as com.android.build.gradle.internal.api.ApkVariantOutputImpl
+            val version = variant.versionName
+            val name = "HeyCam_v${version}.apk"
+            output.outputFileName = name
+        }
     }
 }
 
