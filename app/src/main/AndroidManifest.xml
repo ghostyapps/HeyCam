@@ -2,12 +2,18 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- İZİNLER -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <!-- Nothing Phone izni (Kütüphane eklenirse lazım olur) -->
+    <!-- NOTHING MATRIX İZNİ (Bunu kontrol et!) -->
+    <uses-permission android:name="com.nothing.ketchum.permission.ENABLE" />
+    <!-- DONANIM ÖZELLİKLERİ -->
+    <!-- DÜZELTME: Bu satırın sonuna /> koyarak kapattık -->
     <uses-feature android:name="android.hardware.camera" android:required="true" />
 
-    <!-- Galeri uygulamalarını görebilmek için gerekli -->
+    <!-- SORGULAR -->
     <queries>
         <intent>
             <action android:name="android.intent.action.VIEW" />
@@ -38,11 +44,18 @@
         </activity>
 
         <!-- LUT YÖNETİCİSİ -->
-        <!-- DÜZELTME: AppCompat yerine MaterialComponents kullanıyoruz ki butonlar çökmesin -->
+        <!-- DÜZELTME: Yarım kalan satırlar tamamlandı ve kapatıldı -->
         <activity
             android:name=".LutManagerActivity"
             android:screenOrientation="portrait"
             android:theme="@style/Theme.MaterialComponents.DayNight.NoActionBar" />
+
+        <!-- FRAME YÖNETİCİSİ -->
+        <activity
+            android:name=".FrameManagerActivity"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.MaterialComponents.DayNight.NoActionBar" />
+
 
     </application>
 

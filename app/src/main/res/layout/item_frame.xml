@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="200dp"
+    android:layout_margin="8dp"
+    app:cardBackgroundColor="#222222"
+    app:cardCornerRadius="12dp">
+
+    <ImageView
+        android:id="@+id/img_frame_thumb"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:padding="10dp"/>
+
+    <!-- Seçili olduğunu gösteren renkli kenarlık -->
+    <View
+        android:id="@+id/view_selection_border"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/bg_frame_selected"
+        android:visibility="gone"/>
+
+    <!-- SİLME BUTONU KALDIRILDI -->
+
+</androidx.cardview.widget.CardView>

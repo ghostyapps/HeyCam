@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- DÜZELTME: xmlns:app SATIRI EKLENDİ -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="300dp"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="25dp"
+    android:background="@drawable/bg_dialog_rounded"
+    android:theme="@style/ThemeOverlay.AppCompat.Dark">
+
+    <!-- BAŞLIK -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Interval Timer"
+        android:textColor="@android:color/white"
+        android:textSize="22sp"
+        android:fontFamily="@font/productsans_bold"
+        android:gravity="center"
+        android:layout_marginBottom="25dp"/>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center">
+
+        <!-- SÜRE SEÇİCİ -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Interval"
+                android:fontFamily="@font/productsans_bold"
+                android:textColor="#AAAAAA"
+                android:textSize="12sp"
+                android:layout_marginBottom="5dp"/>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="(Seconds)"
+                android:textColor="#666666"
+                android:textSize="10sp"
+                android:layout_marginBottom="5dp"/>
+
+            <NumberPicker
+                android:id="@+id/picker_seconds"
+                android:layout_width="wrap_content"
+                android:layout_height="100dp"
+                android:selectionDividerHeight="0dp"/>
+        </LinearLayout>
+
+        <!-- AYIRAÇ ÇİZGİ -->
+        <View
+            android:layout_width="1dp"
+            android:layout_height="80dp"
+            android:background="#333333"
+            android:layout_marginHorizontal="10dp"/>
+
+        <!-- FOTOĞRAF SAYISI SEÇİCİ -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Photos"
+                android:fontFamily="@font/productsans_bold"
+                android:textColor="#AAAAAA"
+                android:textSize="12sp"
+                android:layout_marginBottom="5dp"/>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="(Count)"
+                android:textColor="#666666"
+                android:textSize="10sp"
+                android:layout_marginBottom="5dp"/>
+
+            <NumberPicker
+                android:id="@+id/picker_count"
+                android:layout_width="wrap_content"
+                android:layout_height="100dp"
+                android:selectionDividerHeight="0dp"/>
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- SES AYARI -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginTop="20dp"
+        android:paddingHorizontal="10dp">
+
+        <ImageView
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:src="@android:drawable/ic_lock_silent_mode_off"
+            app:tint="#AAAAAA"/>
+        <!-- android:tint yerine app:tint daha güvenlidir -->
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Sound Effects"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:fontFamily="@font/productsans_bold"
+            android:layout_marginStart="10dp"/>
+
+        <!-- DÜZELTME BURADA: android:tint YERİNE app:tint KULLANIYORUZ -->
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/switch_sound"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:checked="true"
+            android:text=""
+            android:textOn=""
+            android:textOff=""
+            app:showText="false"
+            app:thumbTint="@android:color/white"
+            app:trackTint="#90FFFFFF"/>
+        <!-- trackTint: %50 Opak Beyaz -->
+
+    </LinearLayout>
+
+    <!-- BAŞLAT BUTONU -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btn_start_timer"
+        android:layout_width="match_parent"
+        android:layout_height="55dp"
+        android:text="START"
+        android:textColor="@android:color/black"
+        android:textSize="16sp"
+        android:fontFamily="@font/productsans_bold"
+        android:letterSpacing="0.1"
+        android:layout_marginTop="25dp"
+        app:backgroundTint="@android:color/white"
+        app:cornerRadius="12dp"/>
+
+</LinearLayout>

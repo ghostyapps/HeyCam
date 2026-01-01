@@ -8,6 +8,7 @@
     android:background="@android:color/black"
     tools:context=".MainActivity">
 
+    <!-- ÜST BAR -->
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/top_info_bar"
         android:layout_width="match_parent"
@@ -19,23 +20,37 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
-        <!-- SOL TARAFTAKİ ISO BİLGİSİ -->
-        <TextView
-            android:id="@+id/txt_iso_display"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+        <!-- SOL TARAFA ALINAN TIMER BUTONU -->
+        <ImageButton
+            android:id="@+id/btn_timer"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
             android:layout_marginStart="35dp"
-            android:fontFamily="@font/productsans_bold"
-            android:text="ISO: 100"
-            android:textColor="@android:color/white"
-            android:textSize="14sp"
-            android:letterSpacing="0.05"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_timer"
+            android:alpha="0.7"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toBottomOf="parent"/>
 
-        <!-- YENİ EKLENEN LUT BUTONU -->
-        <!-- Format butonunun (sağdaki) soluna yapışır -->
+        <!-- SAĞ TARAFA TAŞINAN FRAME BUTONU -->
+        <!-- LUT butonunun soluna yapışık -->
+        <ImageButton
+            android:id="@+id/btn_frames"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginEnd="10dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_frame_icon"
+            android:alpha="0.7"
+            app:layout_constraintEnd_toStartOf="@+id/btn_lut_switch"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"/>
+
+        <!-- LUT BUTONU -->
+        <!-- Format butonunun soluna yapışık -->
         <ImageButton
             android:id="@+id/btn_lut_switch"
             android:layout_width="40dp"
@@ -49,8 +64,7 @@
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toBottomOf="parent"/>
 
-        <!-- MEVCUT FORMAT (JPEG/RAW) BUTONU -->
-        <!-- En sağa yapışır -->
+        <!-- FORMAT BUTONU (EN SAĞDA) -->
         <ImageButton
             android:id="@+id/btn_format_indicator"
             android:layout_width="40dp"
@@ -66,23 +80,35 @@
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 
+    <!-- 2. PREVIEW PENCERESİ (ESKİ SAĞLAM HALİ) -->
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/preview_card_container"
         app:cardBackgroundColor="@android:color/black"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:layout_marginHorizontal="10dp"
+        android:layout_marginHorizontal="20dp"
+        android:layout_marginTop="0dp"
+
         app:layout_constraintDimensionRatio="3:4"
         app:layout_constraintTop_toBottomOf="@id/top_info_bar"
-        app:layout_constraintBottom_toTopOf="@id/bottom_panel_container"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
+
         app:cardCornerRadius="20dp">
 
+        <!-- Sadece TextureView ve iç elemanlar var, FrameLayout YOK -->
         <com.ghostyapps.heycam.AutoFitTextureView
             android:id="@+id/texture_view"
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
+
+        <ImageView
+            android:id="@+id/frame_overlay"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="fitXY"
+            android:visibility="gone"
+            android:elevation="50dp"/>
 
         <View
             android:id="@+id/focus_ring"
@@ -90,9 +116,8 @@
             android:layout_height="50dp"
             android:background="@drawable/focus_ring"
             android:visibility="invisible"
-            android:elevation="100dp"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent" />
+            android:elevation="100dp"/>
+
         <View
             android:id="@+id/shutter_flash"
             android:layout_width="match_parent"
@@ -119,85 +144,152 @@
 
     </com.google.android.material.card.MaterialCardView>
 
+    <!-- 3. ALT PANEL -->
     <LinearLayout
         android:id="@+id/bottom_panel_container"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
+        android:paddingTop="20dp"
         android:paddingBottom="50dp"
+
+        app:layout_constraintTop_toBottomOf="@id/preview_card_container"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintVertical_bias="1.0">
 
-        <RelativeLayout
-            android:id="@+id/shutter_wheel_container"
+        <!-- KONTROL ALANI (90dp) -->
+        <FrameLayout
             android:layout_width="match_parent"
             android:layout_height="90dp"
-            android:layout_marginBottom="10dp"
-            android:clipChildren="false"
-            android:clipToPadding="false">
+            android:layout_marginBottom="10dp">
 
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/shutter_recycler"
+            <RelativeLayout
+                android:id="@+id/shutter_wheel_container"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:clipToPadding="false"
                 android:clipChildren="false"
-                android:requiresFadingEdge="horizontal"
-                android:fadingEdgeLength="120dp"
-                android:overScrollMode="never" />
+                android:clipToPadding="false">
 
-            <View
-                android:id="@+id/wheel_needle"
-                android:layout_width="3dp"
-                android:layout_height="18dp"
-                android:layout_centerHorizontal="true"
-                android:layout_alignParentBottom="true"
-                android:layout_marginBottom="12dp"
-                android:background="@drawable/bg_needle"
-                android:elevation="10dp" />
-        </RelativeLayout>
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/shutter_recycler"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:clipToPadding="false"
+                    android:clipChildren="false"
+                    android:requiresFadingEdge="horizontal"
+                    android:fadingEdgeLength="120dp"
+                    android:overScrollMode="never" />
 
-        <LinearLayout
-            android:id="@+id/mode_selector_container"
-            android:layout_width="wrap_content"
+                <View
+                    android:id="@+id/wheel_needle"
+                    android:layout_width="3dp"
+                    android:layout_height="18dp"
+                    android:layout_centerHorizontal="true"
+                    android:layout_alignParentBottom="true"
+                    android:layout_marginBottom="12dp"
+                    android:background="@drawable/bg_needle"
+                    android:elevation="10dp" />
+            </RelativeLayout>
+
+            <LinearLayout
+                android:id="@+id/ev_control_container"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:orientation="horizontal"
+                android:visibility="gone"
+                android:elevation="10dp">
+
+                <ImageButton
+                    android:id="@+id/btn_ev_minus"
+                    android:layout_width="25dp"
+                    android:layout_height="25dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:src="@drawable/ic_minus_button"
+                    android:scaleType="fitCenter"/>
+
+                <TextView
+                    android:id="@+id/txt_ev_value"
+                    android:layout_width="120dp"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:text="0.0"
+                    android:textColor="@android:color/white"
+                    android:textSize="24sp"
+                    android:fontFamily="@font/productsans_bold"
+                    android:letterSpacing="0.1"/>
+
+                <ImageButton
+                    android:id="@+id/btn_ev_plus"
+                    android:layout_width="25dp"
+                    android:layout_height="25dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:src="@drawable/ic_plus_button"
+                    android:scaleType="fitCenter"/>
+            </LinearLayout>
+        </FrameLayout>
+
+        <!-- ETİKET ALANI -->
+        <FrameLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_gravity="center_horizontal"
-            android:layout_marginBottom="25dp"
-            android:orientation="horizontal">
+            android:layout_marginBottom="25dp">
 
             <TextView
-                android:id="@+id/btn_shutter"
-                android:layout_width="wrap_content"
+                android:id="@+id/txt_ev_label"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:gravity="center"
                 android:fontFamily="@font/productsans_bold"
-                android:text="SHUTTER"
-                android:textColor="@android:color/white"
-                android:textSize="12sp"
-                android:letterSpacing="0.15"
-                android:padding="8dp" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:fontFamily="@font/productsans_bold"
-                android:text="|"
-                android:textColor="#333333"
-                android:padding="8dp"
-                android:textSize="12sp"/>
-
-            <TextView
-                android:id="@+id/btn_iso"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:fontFamily="@font/productsans_bold"
-                android:text="ISO"
+                android:text="EXPOSURE VALUE"
                 android:textColor="#AAAAAA"
                 android:textSize="12sp"
                 android:letterSpacing="0.15"
-                android:padding="8dp" />
-        </LinearLayout>
+                android:visibility="gone"/>
 
+            <LinearLayout
+                android:id="@+id/mode_selector_container"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/btn_shutter"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="@font/productsans_bold"
+                    android:text="SHUTTER"
+                    android:textColor="@android:color/white"
+                    android:textSize="12sp"
+                    android:letterSpacing="0.15"
+                    android:padding="8dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="@font/productsans_bold"
+                    android:text="|"
+                    android:textColor="#333333"
+                    android:padding="8dp"
+                    android:textSize="12sp"/>
+
+                <TextView
+                    android:id="@+id/btn_iso"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="@font/productsans_bold"
+                    android:text="ISO"
+                    android:textColor="#AAAAAA"
+                    android:textSize="12sp"
+                    android:letterSpacing="0.15"
+                    android:padding="8dp" />
+            </LinearLayout>
+        </FrameLayout>
+
+        <!-- EN ALT BUTONLAR -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -235,5 +327,46 @@
                 android:alpha="0.9" />
         </LinearLayout>
     </LinearLayout>
+
+    <!-- ============================================== -->
+    <!-- 4. SAYAÇ (EN ÜST KATMAN)                       -->
+    <!-- ============================================== -->
+    <!-- CardView'ın İÇİNDE DEĞİL, XML'in EN ALTINDA -->
+    <TextView
+        android:id="@+id/txt_countdown"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="3"
+        android:textSize="120sp"
+        android:textColor="@android:color/white"
+        android:fontFamily="@font/productsans_bold"
+        android:shadowColor="#000000"
+        android:shadowDx="0"
+        android:shadowDy="0"
+        android:shadowRadius="30"
+        android:elevation="120dp"
+        android:visibility="gone"
+
+        app:layout_constraintTop_toTopOf="@id/preview_card_container"
+        app:layout_constraintBottom_toBottomOf="@id/preview_card_container"
+        app:layout_constraintStart_toStartOf="@id/preview_card_container"
+        app:layout_constraintEnd_toEndOf="@id/preview_card_container" />
+
+    <!-- ... (Yukarıdaki tüm kodlar bittikten sonra) ... -->
+
+    <!-- ============================================================== -->
+    <!-- 5. KESİN ÇÖZÜM: TAM EKRAN HUD KATMANI                          -->
+    <!-- ============================================================== -->
+    <!-- Bu katman her şeyin üzerindedir (Z-Index Kralı) -->
+    <!-- Clickable=false yaptık ki dokunmaları aşağıya (Kameraya) geçirsin -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:elevation="200dp"
+        android:clickable="false"
+        android:focusable="false">
+
+
+    </FrameLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

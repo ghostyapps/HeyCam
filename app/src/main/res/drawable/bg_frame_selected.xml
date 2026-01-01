@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+
+    <!-- İçi şeffaf olsun ki resmi kapatmasın -->
+    <solid android:color="@android:color/transparent" />
+
+    <!-- Kenarlık: 3dp kalınlığında, Mavi/Cyan renk -->
+    <!-- Rengi kendi zevkine göre değiştirebilirsin (#FF0000 kırmızı vb.) -->
+    <stroke
+        android:width="4dp"
+        android:color="#FB6B5D" />
+
+    <!-- Köşeleri resimle uyumlu yuvarla -->
+    <corners android:radius="12dp" />
+</shape>

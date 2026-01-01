@@ -25,6 +25,7 @@ import android.view.TextureView;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 import android.graphics.Matrix;
@@ -54,8 +55,13 @@ public class MainActivity extends AppCompatActivity {
 
     private View previewCardParent;
 
+    private View modeSelectorContainer; // Shutter | ISO yazılarının kutusu
+
     private ImageButton btnLut;
     private android.content.SharedPreferences prefs;
+
+    // MainActivity.java
+    private ImageView frameOverlay;
 
     // Tekerlek titreşimi için son pozisyonu tutar
     private int lastHapticPos = -1;
@@ -66,7 +72,6 @@ public class MainActivity extends AppCompatActivity {
     // --- 1. UI BİLEŞENLERİ ---
     private AutoFitTextureView textureView;
     private RecyclerView rulerRecycler;
-    private TextView txtIsoInfo;
     private TextView btnAutoManual;
 
     // Butonlar & Seçiciler
@@ -89,10 +94,35 @@ public class MainActivity extends AppCompatActivity {
     private boolean isRawMode = false; // Varsayılan JPEG
     private boolean mContainsRawCapability = false; // Cihaz RAW destekliyor mu?
 
+    private SoundManager soundManager;
+    private boolean isSoundEnabled = true; // Kayıtlı ayar
+
     // Cetvel Verileri
     private final double[] SHUTTER_VALUES = {10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0};
     private final List<String> SHUTTER_STRINGS = Arrays.asList("1/10", "1/25", "1/50", "1/100", "1/250", "1/500", "1/1000");
     private int currentShutterIndex = 3;
+
+    // EV UI Bileşenleri
+    private View evControlContainer;
+    private TextView txtEvValue;
+    private ImageButton btnEvPlus, btnEvMinus;
+
+    // EV (Pozlama) Mantığı için gerekli değişkenler
+    private android.util.Range<Integer> evRange;
+    private android.util.Rational evStep;
+    private int mEvIndex = 0;
+    private int stepsPerClick = 1; // Her tıklamada kaç birim atlayacağız?
+
+    // UI Bileşenleri
+    private View shutterWheelContainer; // Tekerleğin olduğu kutu
+
+    // EV Mantığı
+    private float currentEvStep = 0f; // Şu anki EV değeri (Örn: 0.33)
+    private float stepSize = 1.0f / 3.0f; // 1/3 Adım
+    private float maxEv = 2.0f; // Genelde +2
+    private float minEv = -2.0f; // Genelde -2
+    // mEvIndex: Kameraya gidecek tam sayı değeri (Camera2 API basamak sayısı ister)
+    private TextView txtEvLabel; // Yeni eklenen EV yazısı
 
     // YENİ SATIR EKLE:
     private List<String> ISO_STRINGS = new ArrayList<>(); // Dinamik olarak doldurulacak
@@ -105,6 +135,9 @@ public class MainActivity extends AppCompatActivity {
     // Sensör Tabanlı Oryantasyon Takibi
     private android.view.OrientationEventListener orientationEventListener;
     private int currentDeviceOrientation = 0;
+
+    // Sınıfın başındaki tanımlarda:
+    private ImageButton btnFrames; // View yerine ImageButton yap
 
 
     // --- 3. CAMERA2 API BİLEŞENLERİ ---
@@ -135,7 +168,60 @@ public class MainActivity extends AppCompatActivity {
     private android.os.Handler toastHandler = new android.os.Handler(android.os.Looper.getMainLooper());
     private Runnable hideToastRunnable;
 
+
+    private ImageButton btnTimer;
+    private TextView txtCountdown;
+    private GlyphHelper glyphHelper;
+
+    // Sayaç Durumu
+    private boolean isTimerRunning = false;
+    private int selectedInterval = 3; // Varsayılan 3 sn
+    private int selectedPhotoCount = 1; // Varsayılan 1 foto
+    private int photosTakenInBurst = 0;
+    private android.os.CountDownTimer activeTimer;
+
     private androidx.cardview.widget.CardView previewCard;
+
+    // Sınıf seviyesindeki değişken
+    private TextView txtCountdownOverlay;
+
+    private void setupCountdownOverlay() {
+        // 1. TextView'i kodla oluştur
+        txtCountdownOverlay = new TextView(this);
+        txtCountdownOverlay.setText("3");
+        txtCountdownOverlay.setTextSize(120); // Boyut
+        txtCountdownOverlay.setTextColor(android.graphics.Color.WHITE);
+        txtCountdownOverlay.setTypeface(null, android.graphics.Typeface.BOLD);
+
+        // Gölgelendirme (Okunabilirlik için)
+        txtCountdownOverlay.setShadowLayer(30, 0, 0, android.graphics.Color.BLACK);
+
+        // Başlangıçta gizle
+        txtCountdownOverlay.setVisibility(View.GONE);
+
+        // 2. Konumlandırma Ayarları (Tam Orta)
+        android.widget.FrameLayout.LayoutParams params = new android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT
+        );
+        params.gravity = android.view.Gravity.CENTER;
+
+        // 3. EN KRİTİK NOKTA: Uygulamanın en tepesindeki pencere katmanına ekle
+        // Bu katman XML'den bağımsızdır ve her şeyin üzerindedir.
+        ViewGroup rootWindow = (ViewGroup) getWindow().getDecorView();
+        rootWindow.addView(txtCountdownOverlay, params);
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (glyphHelper != null) {
+            // ESKİSİ: glyphHelper.stop();
+            // YENİSİ:
+            glyphHelper.disconnect();
+        }
+        if (soundManager != null) soundManager.release();
+        super.onDestroy();
+    }
 
     // --- FİZİKSEL TUŞLARI VE ÖZEL SCANCODE'U DİNLEME ---
     @Override
@@ -209,6 +295,15 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        // Sadece hazırla, başlatma.
+        glyphHelper = new GlyphHelper();
+        glyphHelper.prepare(this);
+
+        soundManager = new SoundManager();
+        soundManager.init(this);
+
+        txtCountdown = findViewById(R.id.txt_countdown);
+
         // EĞER TELEFON ANDROID 13 VE ÜZERİYSE BU TEK SATIR YETERLİDİR:
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
             setRecentsScreenshotEnabled(false);
@@ -223,6 +318,8 @@ public class MainActivity extends AppCompatActivity {
             // LUT Yöneticisini Aç
             startActivity(new android.content.Intent(MainActivity.this, LutManagerActivity.class));
         });
+
+        txtCountdown = findViewById(R.id.txt_countdown);
 
 
         // Navigasyon barını siyah yap
@@ -252,7 +349,7 @@ public class MainActivity extends AppCompatActivity {
 
         // --- 1. VIEW BAĞLANTILARI ---
         textureView = findViewById(R.id.texture_view);
-        txtIsoInfo = findViewById(R.id.txt_iso_display);
+        //txtIsoInfo = findViewById(R.id.txt_iso_display);
 
         // Cetvel ve Görsel Efektler
         rulerRecycler = findViewById(R.id.shutter_recycler);
@@ -260,6 +357,25 @@ public class MainActivity extends AppCompatActivity {
         previewCardParent = findViewById(R.id.preview_card_container);
         wheelNeedle = findViewById(R.id.wheel_needle);
         shutterFlash = findViewById(R.id.shutter_flash);
+
+        evControlContainer = findViewById(R.id.ev_control_container);
+        txtEvValue = findViewById(R.id.txt_ev_value);
+        btnEvPlus = findViewById(R.id.btn_ev_plus);
+        btnEvMinus = findViewById(R.id.btn_ev_minus);
+        // Diğer findViewById'lerin yanına:
+        txtEvLabel = findViewById(R.id.txt_ev_label);
+
+        // ARTI BUTONU
+        btnEvPlus.setOnClickListener(v -> {
+            changeEv(1); // +1 adım
+            v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
+        });
+
+        // EKSİ BUTONU
+        btnEvMinus.setOnClickListener(v -> {
+            changeEv(-1); // -1 adım
+            v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
+        });
 
         // Metin Seçiciler
         btnShutter = findViewById(R.id.btn_shutter);
@@ -273,6 +389,9 @@ public class MainActivity extends AppCompatActivity {
         // Üst Format Butonu
         btnFormat = findViewById(R.id.btn_format_indicator);
 
+        // onCreate içinde diğer findViewById'lerin yanına ekle:
+        modeSelectorContainer = findViewById(R.id.mode_selector_container);
+
         // --- 2. YUVARLAK KÖŞE ZORLAMASI (FIX) ---
         // TextureView bazen CardView sınırlarını takmaz. Bu kod onu zorlar.
         androidx.cardview.widget.CardView card = findViewById(R.id.preview_card_container);
@@ -285,10 +404,14 @@ public class MainActivity extends AppCompatActivity {
 
         // --- HAZIR LUTLARI KOPYALA ---
         copyDefaultLuts();
+        // Hazır çerçeveleri kopyala
+        copyDefaultFrames();
 
         // Başlangıç Ayarı: Auto Mod
         toggleUiForMode(false);
-        txtIsoInfo.setText("HeyCam");
+        //txtIsoInfo.setText("HeyCam");
+
+
 
         // --- 4. DOKUNMATİK ODAKLAMA ---
         textureView.setOnTouchListener((v, event) -> {
@@ -324,70 +447,93 @@ public class MainActivity extends AppCompatActivity {
         if (orientationEventListener.canDetectOrientation()) {
             orientationEventListener.enable();
         }
+
+        setupCountdownOverlay();
+
+
+
     }
     // --- UI SETUP & LOGIC ---
 
-    private void setupButtons() {
 
-        // 1. SharedPreferences Başlat (Ayarları okumak için)
+
+    private void changeEv(int direction) {
+        if (evRange == null || evStep == null) return;
+
+        // DÜZELTME: direction (+1 veya -1) ile stepsPerClick'i çarpıyoruz
+        // Böylece tek basışta 0.33'lük bir sıçrama yapıyoruz.
+        int jump = direction * stepsPerClick;
+        int newIndex = mEvIndex + jump;
+
+        // Sınır Kontrolü
+        if (newIndex >= evRange.getLower() && newIndex <= evRange.getUpper()) {
+            mEvIndex = newIndex;
+
+            float val = mEvIndex * evStep.floatValue();
+
+            // Formatlama (Kullanıcı dostu 0.3, 0.7, 1.0 gösterimi)
+            String label;
+            if (Math.abs(val) < 0.05f) label = "0.0"; // 0.0'a çok yakınsa 0 de
+            else if (val > 0) label = String.format("+%.1f", val);
+            else label = String.format("%.1f", val);
+
+            txtEvValue.setText(label);
+
+            updatePreview();
+        }
+    }
+
+
+
+
+    private void setupButtons() {
+        shutterWheelContainer = findViewById(R.id.shutter_wheel_container);
         prefs = getSharedPreferences("HeyCamSettings", MODE_PRIVATE);
 
-        // 2. LUT Butonunu Bul ve Tıklama Ver
+        // --- 1. LUT BUTONU ---
         btnLut = findViewById(R.id.btn_lut_switch);
         btnLut.setOnClickListener(v -> {
-            // Import sayfasına git
-            android.content.Intent intent = new android.content.Intent(MainActivity.this, LutManagerActivity.class);
-            startActivity(intent);
+            startActivity(new android.content.Intent(MainActivity.this, LutManagerActivity.class));
         });
 
-        // --- 1. GALERİ BUTONU ---
+        // --- 2. FRAME BUTONU ---
+        frameOverlay = findViewById(R.id.frame_overlay);
+        btnFrames = findViewById(R.id.btn_frames);
+        btnFrames.setOnClickListener(v -> {
+            startActivity(new android.content.Intent(MainActivity.this, FrameManagerActivity.class));
+        });
+
+        // --- 3. TIMER BUTONU ---
+        btnTimer = findViewById(R.id.btn_timer);
+        btnTimer.setOnClickListener(v -> showTimerDialog());
+
+        // --- 4. GALERİ BUTONU ---
         ImageButton btnGallery = findViewById(R.id.btn_gallery);
         if (btnGallery != null) {
             btnGallery.setOnClickListener(v -> openLastPhoto());
         }
 
-        // --- FORMAT DEĞİŞTİRİCİ (JPEG / RAW) ---
+        // --- 5. FORMAT DEĞİŞTİRİCİ (RAW/JPEG) - SADELEŞTİRİLDİ ---
+        // Bak burası artık tek satır oldu, çünkü tüm işi 'updateUiForFormat' yapıyor.
         btnFormat.setOnClickListener(v -> {
             if (!mContainsRawCapability) {
                 Toast.makeText(this, "This device does not support RAW", Toast.LENGTH_SHORT).show();
                 return;
             }
+
             isRawMode = !isRawMode;
-
-            if (isRawMode) {
-                // RAW MODU AÇILDI
-                btnFormat.setImageResource(R.drawable.ic_raw_indicator);
-                btnFormat.setAlpha(1.0f);
-
-                // LUT Butonunu Pasif Yap ve Gizle (veya Alpha düşür)
-                btnLut.setEnabled(false);
-                btnLut.setAlpha(0.3f);
-                showCenteredMessage("RAW Mode: LUTs Disabled");
-
-            } else {
-                // JPEG MODU AÇILDI
-                btnFormat.setImageResource(R.drawable.ic_jpeg_indicator);
-                btnFormat.setAlpha(0.9f);
-
-                // LUT Butonunu Tekrar Aktif Et
-                btnLut.setEnabled(true);
-                updateLutIconState(); // Eski rengine (Aktif/Pasif) geri dönsün
-                // showCenteredMessage("JPEG Mode");
-            }
+            updateUiForFormat(); // SİHİRLİ SATIR BURASI
         });
 
-        // --- 3. AUTO / MANUAL MOD DEĞİŞTİRİCİ ---
+        // --- 6. AUTO / MANUAL MOD DEĞİŞTİRİCİ ---
         btnModeSwitch.setOnClickListener(v -> {
             boolean targetIsManual = !isManualMode;
 
             if (targetIsManual) {
-                // -> MANUAL MODA GEÇİŞ
+                // -> MANUAL MOD
                 isManualMode = true;
-
-                // İKONU GÜNCELLE: "M" İkonu (Manual'de olduğumuzu gösterir)
                 btnModeSwitch.setImageResource(R.drawable.ic_manual_indicator);
-
-                toggleUiForMode(true); // Cetveli göster
+                toggleUiForMode(true);
 
                 // Varsayılan Değerler
                 selectedIso = 100;
@@ -404,62 +550,232 @@ public class MainActivity extends AppCompatActivity {
                 updatePreview();
 
             } else {
-                // -> AUTO MODA GEÇİŞ
-                // İKONU GÜNCELLE: "A" İkonu (Auto'da olduğumuzu gösterir)
+                // -> AUTO MOD
                 btnModeSwitch.setImageResource(R.drawable.ic_auto_indicator);
+                isManualMode = false;
+                toggleUiForMode(false);
 
-                // Şok Tedavisi
                 if (isoRange != null) selectedIso = isoRange.getLower();
                 selectedShutter = 1_000_000L;
-                updatePreview();
 
-                new Handler().postDelayed(() -> {
-                    if (isFinishing() || cameraDevice == null) return;
-                    isManualMode = false;
-                    toggleUiForMode(false); // Cetveli gizle
-                    currentIsoIndex = 0;
-                    rulerRecycler.scrollToPosition(0);
-                    updatePreview();
-                }, 100);
+                updatePreview();
             }
         });
 
-        // --- 4. FOTOĞRAF ÇEKME ---
+        // --- 7. FOTOĞRAF ÇEKME ---
         btnTakePhoto.setOnClickListener(v -> {
-            // EKLENEN SATIR: Haptic Feedback (Titreşim)
-            // VIRTUAL_KEY: Standart Android tuş titreşimi verir.
-            // Alternatif olarak KEYBOARD_TAP deneyebilirsin.
             v.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
-            if (shutterFlash != null) {
-                // 1. Önce görünür yap (Çünkü onWindowFocusChanged bunu GONE yapmıştı)
-                shutterFlash.setVisibility(View.VISIBLE);
-
-                // 2. En üste getir (Z-Order garantisi)
-                shutterFlash.bringToFront();
-
-                // 3. Simsiyah başla
-                shutterFlash.setAlpha(1f);
-
-                // 4. Hızlıca yok ol (Shutter Efekti)
-                shutterFlash.animate()
-                        .alpha(0f)
-                        .setDuration(150)
-                        .setStartDelay(50) // 50ms siyah kalsın ("Tak" hissi için)
-                        .withEndAction(() -> {
-                            // İş bitince tekrar GONE yap ki boşuna GPU çizmesin
-                            shutterFlash.setVisibility(View.GONE);
-                        })
-                        .start();
-            }
-
+            triggerShutterAnimation();
             takePicture();
         });
 
-        // --- 5. TEKERLEK SEÇİMİ ---
+        // --- 8. TEKERLEK SEÇİMİ ---
         if (btnIso != null) btnIso.setOnClickListener(v -> switchWheelMode(WheelMode.ISO));
         if (btnShutter != null) btnShutter.setOnClickListener(v -> switchWheelMode(WheelMode.SHUTTER));
     }
 
+
+    private void showTimerDialog() {
+        if (isTimerRunning) {
+            cancelTimerSequence();
+            return;
+        }
+
+        android.app.Dialog dialog = new android.app.Dialog(this);
+        dialog.setContentView(R.layout.dialog_interval_timer);
+
+        if(dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
+        }
+
+        android.widget.NumberPicker pkSec = dialog.findViewById(R.id.picker_seconds);
+        android.widget.NumberPicker pkCount = dialog.findViewById(R.id.picker_count);
+        com.google.android.material.button.MaterialButton btnStart = dialog.findViewById(R.id.btn_start_timer);
+
+        // --- DÜZELTME BURADA: TÜRÜ DEĞİŞTİRİYORUZ ---
+        // MaterialSwitch yerine SwitchCompat kullanıyoruz
+        androidx.appcompat.widget.SwitchCompat switchSound = dialog.findViewById(R.id.switch_sound);
+
+
+        // --- AYARLARI YÜKLE ---
+        pkSec.setMinValue(1); pkSec.setMaxValue(10); pkSec.setValue(selectedInterval);
+        pkCount.setMinValue(1); pkCount.setMaxValue(10); pkCount.setValue(selectedPhotoCount);
+
+        // Kayıtlı ses ayarını çek (Varsayılan: True)
+        isSoundEnabled = prefs.getBoolean("timer_sound_enabled", true);
+        switchSound.setChecked(isSoundEnabled);
+
+        // Klavye Engelleme
+        pkSec.setDescendantFocusability(android.widget.NumberPicker.FOCUS_BLOCK_DESCENDANTS);
+        pkCount.setDescendantFocusability(android.widget.NumberPicker.FOCUS_BLOCK_DESCENDANTS);
+
+        btnStart.setOnClickListener(v -> {
+            pkSec.clearFocus();
+            pkCount.clearFocus();
+
+            selectedInterval = pkSec.getValue();
+            selectedPhotoCount = pkCount.getValue();
+
+            // --- AYARI KAYDET VE UYGULA ---
+            isSoundEnabled = switchSound.isChecked();
+            prefs.edit().putBoolean("timer_sound_enabled", isSoundEnabled).apply();
+            soundManager.setSoundEnabled(isSoundEnabled); // Yöneticiye bildir
+
+            dialog.dismiss();
+            startTimerSequence();
+        });
+
+        dialog.show();
+    }
+
+    private void startTimerSequence() {
+        isTimerRunning = true;
+        photosTakenInBurst = 0;
+
+        // --- BAĞLAN ---
+        if (glyphHelper != null) {
+            glyphHelper.connect();
+        }
+
+        btnTimer.setImageResource(R.drawable.ic_close);
+        runNextCountdown();
+    }
+
+
+    private void runNextCountdown() {
+        if (!isTimerRunning) return;
+
+        // Hedefe ulaştık mı?
+        if (photosTakenInBurst >= selectedPhotoCount) {
+            finishTimerSequence();
+            return;
+        }
+
+        // --- SAYACI HAZIRLA ---
+        if (txtCountdownOverlay != null) {
+            txtCountdownOverlay.setVisibility(View.VISIBLE);
+            txtCountdownOverlay.setText("");
+            txtCountdownOverlay.bringToFront();
+        }
+
+        // Timer Başlıyor
+        activeTimer = new android.os.CountDownTimer(selectedInterval * 1000L, 1000) {
+            @Override
+            public void onTick(long millisUntilFinished) {
+                // Matematiksel yuvarlama (0 görünmesin diye)
+                int secondsLeft = (int) Math.ceil(millisUntilFinished / 1000.0);
+                if (secondsLeft < 1) secondsLeft = 1; // Garanti olsun
+
+                // 1. Ekrana Yaz
+                if (txtCountdownOverlay != null) {
+                    txtCountdownOverlay.setText(String.valueOf(secondsLeft));
+
+                    // Kalp Atışı Animasyonu
+                    txtCountdownOverlay.setScaleX(0.5f);
+                    txtCountdownOverlay.setScaleY(0.5f);
+                    txtCountdownOverlay.setAlpha(0f);
+
+                    txtCountdownOverlay.animate()
+                            .scaleX(1f).scaleY(1f)
+                            .alpha(1f)
+                            .setDuration(300)
+                            .setInterpolator(new android.view.animation.OvershootInterpolator())
+                            .start();
+                }
+
+                // 2. Ses (Bip)
+                if (soundManager != null) soundManager.playTick();
+
+                // 3. Matrix (Rakam)
+                if (glyphHelper != null) {
+                    glyphHelper.displayCounter(secondsLeft, currentDeviceOrientation);
+                }
+            }
+
+            @Override
+            public void onFinish() {
+                // --- SÜRE BİTTİ ---
+
+                // 1. Sayacı ve Işığı Temizle (0 görünmesin)
+                if (txtCountdownOverlay != null) txtCountdownOverlay.setVisibility(View.GONE);
+                if (glyphHelper != null) glyphHelper.clearDisplay();
+
+                // 2. Çekim Efektleri (SES ve GÖRÜNTÜ)
+                if (soundManager != null) soundManager.playShutter(); // ŞAK sesi
+                triggerShutterAnimation(); // Siyah perde
+
+                // 3. Fotoğrafı Çek
+                takePicture();
+                photosTakenInBurst++; // Sayacı artır
+
+                // 4. KARAR ANI
+                if (photosTakenInBurst >= selectedPhotoCount) {
+                    // HEDEF TAMAMLANDI
+                    // Fotoğrafın kaydedilmesi için yarım saniye pay ver, sonra bitiriş efektine geç
+                    new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                        finishTimerSequence();
+                    }, 500);
+                } else {
+                    // DEVAM EDECEK
+                    // Bir sonraki poz için 2 saniye bekle
+                    new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                        runNextCountdown();
+                    }, 2000);
+                }
+            }
+        }.start();
+    }
+
+
+    private void finishTimerSequence() {
+        isTimerRunning = false;
+        btnTimer.setImageResource(R.drawable.ic_timer);
+
+        if (txtCountdownOverlay != null) txtCountdownOverlay.setVisibility(View.GONE);
+
+        // --- FİNAL DESENİ VE KAPANIŞ ---
+        if (glyphHelper != null) {
+            // 1. SES: Desenden önce çalsın (Anlık tepki)
+            soundManager.playFinish();
+
+            // 2. GÖRÜNTÜ: Deseni gönder
+            glyphHelper.displayFinishPattern(currentDeviceOrientation);
+
+            // 3. SÜRE: Işık ne kadar açık kalsın? (2000ms = 2 Saniye)
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                // Kullanıcı araya girip yeni sayaç başlatmadıysa kapat
+                if (!isTimerRunning) {
+                    glyphHelper.clearDisplay(); // Söndür
+
+                    // Servisi bırak
+                    new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                        glyphHelper.disconnect();
+                    }, 200);
+                }
+            }, 2000); // <-- BURAYI 2000 YAPTIK
+        }
+
+        showCenteredMessage("Sequence Complete");
+    }
+
+
+
+
+
+    private void cancelTimerSequence() {
+        isTimerRunning = false;
+        if (activeTimer != null) activeTimer.cancel();
+        btnTimer.setImageResource(R.drawable.ic_timer);
+
+        if (txtCountdownOverlay != null) txtCountdownOverlay.setVisibility(View.GONE);
+
+        // --- BAĞLANTIYI KOPAR ---
+        if (glyphHelper != null) {
+            glyphHelper.disconnect();
+        }
+
+        showCenteredMessage("Timer Cancelled");
+    }
 
 
     // --- HAZIR LUT'LARI YÜKLEME ---
@@ -673,36 +989,74 @@ public class MainActivity extends AppCompatActivity {
 
 
     private void toggleUiForMode(boolean manual) {
-        long duration = 300;
-        float density = getResources().getDisplayMetrics().density;
+        long duration = 250;
 
         if (manual) {
-            // MANUAL
-            rulerRecycler.setVisibility(View.VISIBLE);
-            rulerRecycler.animate().alpha(1f).setDuration(duration).start();
+            // --- MANUAL MODA GEÇİŞ ---
 
-            ViewGroup.LayoutParams params = wheelNeedle.getLayoutParams();
-            params.width = (int) (6 * density);
-            params.height = (int) (28 * density);
-            wheelNeedle.setLayoutParams(params);
+            // 1. Auto Öğelerini Gizle
+            if (evControlContainer != null) {
+                evControlContainer.animate().alpha(0f).setDuration(duration)
+                        .withEndAction(() -> evControlContainer.setVisibility(View.GONE))
+                        .start();
+            }
+            if (txtEvLabel != null) {
+                txtEvLabel.animate().alpha(0f).setDuration(duration)
+                        .withEndAction(() -> txtEvLabel.setVisibility(View.GONE))
+                        .start();
+            }
+
+            // 2. Manual Öğelerini Göster
+            if (shutterWheelContainer != null) {
+                shutterWheelContainer.setVisibility(View.VISIBLE);
+                shutterWheelContainer.setAlpha(0f);
+                shutterWheelContainer.animate().alpha(1f).setDuration(duration).start();
+            }
+
+            if (modeSelectorContainer != null) {
+                modeSelectorContainer.setVisibility(View.VISIBLE);
+                modeSelectorContainer.setAlpha(0f);
+                modeSelectorContainer.animate().alpha(1f).setDuration(duration).start();
+            }
+
         } else {
-            // AUTO
-            rulerRecycler.animate().alpha(0f).setDuration(duration).withEndAction(() ->
-                    rulerRecycler.setVisibility(View.INVISIBLE)
-            ).start();
+            // --- AUTO MODA GEÇİŞ ---
 
-            ViewGroup.LayoutParams params = wheelNeedle.getLayoutParams();
-            int size = (int) (6 * density);
-            params.width = size;
-            params.height = size;
-            wheelNeedle.setLayoutParams(params);
+            // 1. Manual Öğelerini Gizle
+            if (shutterWheelContainer != null) {
+                shutterWheelContainer.animate().alpha(0f).setDuration(duration)
+                        .withEndAction(() -> shutterWheelContainer.setVisibility(View.GONE))
+                        .start();
+            }
+            if (modeSelectorContainer != null) {
+                modeSelectorContainer.animate().alpha(0f).setDuration(duration)
+                        .withEndAction(() -> modeSelectorContainer.setVisibility(View.INVISIBLE))
+                        .start();
+            }
+
+            // --- DÜZELTME BURADA ---
+            // Hedef parlaklığı belirle: RAW açıksa sönük (0.3), değilse parlak (1.0)
+            float targetAlpha = isRawMode ? 0.3f : 1.0f;
+
+            // 2. Auto Öğelerini Göster (Hedef parlaklığa göre)
+            if (evControlContainer != null) {
+                evControlContainer.setVisibility(View.VISIBLE);
+                evControlContainer.setAlpha(0f);
+                evControlContainer.animate().alpha(targetAlpha).setDuration(duration).start();
+            }
+
+            if (txtEvLabel != null) {
+                txtEvLabel.setVisibility(View.VISIBLE);
+                txtEvLabel.setAlpha(0f);
+                txtEvLabel.animate().alpha(targetAlpha).setDuration(duration).start();
+            }
         }
     }
 
     private void updateInfoText() {
         String sVal = SHUTTER_STRINGS.get(currentShutterIndex);
         String iVal = ISO_STRINGS.get(currentIsoIndex);
-        txtIsoInfo.setText("SHUTTER: " + sVal + "   ISO: " + iVal);
+        //txtIsoInfo.setText("SHUTTER: " + sVal + "   ISO: " + iVal);
     }
 
     private void switchWheelMode(WheelMode mode) {
@@ -769,15 +1123,7 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
             super.onCaptureCompleted(session, request, result);
-            if (!isManualMode) {
-                Integer iso = result.get(CaptureResult.SENSOR_SENSITIVITY);
-                Long exposureTime = result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
-                if (iso != null && exposureTime != null) {
-                    long denominator = Math.round(1_000_000_000.0 / exposureTime);
-                    String shutterText = "1/" + denominator;
-                    runOnUiThread(() -> txtIsoInfo.setText("SHUTTER: " + shutterText + "   ISO: " + iso));
-                }
-            }
+
         }
     };
 
@@ -864,6 +1210,18 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
 
+            // --- EV (POZLAMA) HESAPLAMA ---
+            evRange = characteristics.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE);
+            evStep = characteristics.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_STEP);
+
+            if (evRange != null && evStep != null) {
+                mEvIndex = 0;
+                float stepVal = evStep.floatValue();
+                float targetStep = 1.0f / 3.0f;
+                stepsPerClick = Math.max(1, Math.round(targetStep / stepVal));
+                android.util.Log.d("HeyCam", "Native Step: " + stepVal + ", Steps Per Click: " + stepsPerClick);
+            }
+
             shutterRange = characteristics.get(android.hardware.camera2.CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE);
             sensorArraySize = characteristics.get(android.hardware.camera2.CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
 
@@ -873,15 +1231,13 @@ public class MainActivity extends AppCompatActivity {
                 bestFpsRange = availableFpsRanges[availableFpsRanges.length - 1];
             }
 
-
             // --- 1. PREVIEW BOYUTU (4:3 Öncelikli) ---
-            android.util.Size previewSize = new android.util.Size(640, 480); // Varsayılan
+            android.util.Size previewSize = new android.util.Size(640, 480);
             if (map != null) {
                 android.util.Size[] sizes = map.getOutputSizes(android.graphics.SurfaceTexture.class);
                 if (sizes != null) {
                     for (android.util.Size sz : sizes) {
                         float ratio = (float) sz.getWidth() / sz.getHeight();
-                        // 4:3 (1.33) oranına yakın olanları al
                         if (Math.abs(ratio - 1.3333f) < 0.05f) {
                             if ((long) sz.getWidth() * sz.getHeight() > (long) previewSize.getWidth() * previewSize.getHeight()) {
                                 previewSize = sz;
@@ -891,23 +1247,18 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
 
-
-            // Hesaplanan boyutu global değişkene ata
             imageDimension = previewSize;
 
             // --- ASPECT RATIO AYARI ---
             if (imageDimension != null) {
-                // Telefon DİK (Portrait) tutuluyorsa:
                 if (getResources().getConfiguration().orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT) {
-                    // 3:4 oranı için (Genişlik < Yükseklik)
                     textureView.setAspectRatio(imageDimension.getHeight(), imageDimension.getWidth());
                 } else {
-                    // Yan tutuluyorsa
                     textureView.setAspectRatio(imageDimension.getWidth(), imageDimension.getHeight());
                 }
             }
 
-            // --- 2. JPEG IMAGEREADER (4:3 ve En Büyük) ---
+            // --- 2. JPEG IMAGEREADER ---
             android.util.Size largestJpeg = new android.util.Size(640, 480);
             if (map != null) {
                 android.util.Size[] jpegSizes = map.getOutputSizes(android.graphics.ImageFormat.JPEG);
@@ -925,6 +1276,8 @@ public class MainActivity extends AppCompatActivity {
 
             if (imageReader != null) imageReader.close();
             imageReader = android.media.ImageReader.newInstance(largestJpeg.getWidth(), largestJpeg.getHeight(), android.graphics.ImageFormat.JPEG, 2);
+
+            // --- GÜNCELLENMİŞ LISTENER (DOĞRU FRAME MANTIĞI) ---
             imageReader.setOnImageAvailableListener(reader -> {
                 try (android.media.Image image = reader.acquireNextImage()) {
                     if (image != null) {
@@ -932,74 +1285,109 @@ public class MainActivity extends AppCompatActivity {
                         byte[] bytes = new byte[buffer.remaining()];
                         buffer.get(bytes);
 
-                        // --- LUT KONTROLÜ ---
                         String currentLutName = prefs.getString("current_lut_name", null);
+                        String currentFrameName = prefs.getString("current_frame_name", null);
 
-                        if (currentLutName != null && !currentLutName.isEmpty()) {
-                            File lutFile = new File(getFilesDir(), "luts/" + currentLutName);
-                            if (lutFile.exists()) {
-                                showCenteredMessage("Applying LUT...");
+                        boolean hasLut = (currentLutName != null && !currentLutName.isEmpty());
+                        boolean hasFrame = (currentFrameName != null && !currentFrameName.isEmpty());
 
-                                // 1. JPEG Bytes -> Bitmap (Mutable)
-                                android.graphics.BitmapFactory.Options opt = new android.graphics.BitmapFactory.Options();
-                                opt.inMutable = true;
-                                android.graphics.Bitmap bitmap = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.length, opt);
+                        if (!hasLut && !hasFrame) {
+                            save(bytes);
+                            return;
+                        }
 
-                                if (bitmap != null) {
-                                    // --- DÜZELTME BAŞLANGICI: ROTASYON ---
-                                    // Gelen fotoğrafın EXIF bilgisini oku
-                                    try {
-                                        android.media.ExifInterface exif = new android.media.ExifInterface(new java.io.ByteArrayInputStream(bytes));
-                                        int orientation = exif.getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, android.media.ExifInterface.ORIENTATION_NORMAL);
+                        showCenteredMessage("Processing...");
 
-                                        int rotationInDegrees = 0;
-                                        if (orientation == android.media.ExifInterface.ORIENTATION_ROTATE_90) rotationInDegrees = 90;
-                                        else if (orientation == android.media.ExifInterface.ORIENTATION_ROTATE_180) rotationInDegrees = 180;
-                                        else if (orientation == android.media.ExifInterface.ORIENTATION_ROTATE_270) rotationInDegrees = 270;
+                        // --- A. BITMAP OLUŞTUR VE DÖNDÜR (ANA FOTOĞRAF) ---
+                        android.graphics.BitmapFactory.Options opt = new android.graphics.BitmapFactory.Options();
+                        opt.inMutable = true;
+                        android.graphics.Bitmap bitmap = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.length, opt);
 
-                                        // Eğer dönüş gerekliyse Bitmap'i fiziksel olarak döndür
-                                        if (rotationInDegrees != 0) {
-                                            android.graphics.Matrix matrix = new android.graphics.Matrix();
-                                            matrix.preRotate(rotationInDegrees);
+                        if (bitmap != null) {
+                            try {
+                                android.media.ExifInterface exif = new android.media.ExifInterface(new java.io.ByteArrayInputStream(bytes));
+                                int orientation = exif.getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, android.media.ExifInterface.ORIENTATION_NORMAL);
 
-                                            // Eski bitmap'i döndürülmüş yeni bitmap ile değiştir
-                                            android.graphics.Bitmap rotatedBitmap = android.graphics.Bitmap.createBitmap(
-                                                    bitmap, 0, 0, bitmap.getWidth(), bitmap.getHeight(), matrix, true);
+                                int rotationInDegrees = 0;
+                                if (orientation == android.media.ExifInterface.ORIENTATION_ROTATE_90) rotationInDegrees = 90;
+                                else if (orientation == android.media.ExifInterface.ORIENTATION_ROTATE_180) rotationInDegrees = 180;
+                                else if (orientation == android.media.ExifInterface.ORIENTATION_ROTATE_270) rotationInDegrees = 270;
 
-                                            // Eskisini temizle, yenisini kullan
-                                            if (bitmap != rotatedBitmap) {
-                                                bitmap.recycle();
-                                                bitmap = rotatedBitmap;
-                                            }
-                                        }
-                                    } catch (Exception e) {
-                                        e.printStackTrace();
+                                // Ana fotoğrafı düzelt (Dikse dik, Yataysa yatay hale getir)
+                                if (rotationInDegrees != 0) {
+                                    android.graphics.Matrix matrix = new android.graphics.Matrix();
+                                    matrix.preRotate(rotationInDegrees);
+                                    android.graphics.Bitmap rotatedBitmap = android.graphics.Bitmap.createBitmap(
+                                            bitmap, 0, 0, bitmap.getWidth(), bitmap.getHeight(), matrix, true);
+
+                                    if (bitmap != rotatedBitmap) {
+                                        bitmap.recycle();
+                                        bitmap = rotatedBitmap;
                                     }
-                                    // --- DÜZELTME BİTİŞİ ---
+                                }
+                            } catch (Exception e) { e.printStackTrace(); }
 
-                                    // 2. LUT Uygula (Artık düzgün bitmap üzerindeyiz)
+                            // --- B. LUT UYGULA ---
+                            if (hasLut) {
+                                java.io.File lutFile = new java.io.File(getFilesDir(), "luts/" + currentLutName);
+                                if (lutFile.exists()) {
                                     CubeLut lutProcessor = new CubeLut();
                                     if (lutProcessor.load(lutFile)) {
                                         lutProcessor.apply(bitmap);
                                     }
+                                }
+                            }
 
-                                    // 3. Bitmap -> JPEG ve Kaydet
-                                    try (java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
-                                        bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, out);
-                                        byte[] newBytes = out.toByteArray();
+                            // --- C. ÇERÇEVE UYGULA (DÜZELTİLDİ) ---
+                            if (hasFrame) {
+                                java.io.File frameFile = new java.io.File(getFilesDir(), "frames/" + currentFrameName);
+                                if (frameFile.exists()) {
+                                    android.graphics.Bitmap frameBitmap = android.graphics.BitmapFactory.decodeFile(frameFile.getAbsolutePath());
 
-                                        save(newBytes);
-                                        bitmap.recycle();
-                                        return;
-                                    } catch (Exception e) {
-                                        e.printStackTrace();
+                                    if (frameBitmap != null) {
+
+                                        // 1. Ana fotoğrafın son haline bak: Yatay mı? (Genişlik > Yükseklik)
+                                        boolean isBitmapLandscape = bitmap.getWidth() > bitmap.getHeight();
+
+                                        // 2. Çerçeveye bak: Dik mi? (Yükseklik > Genişlik)
+                                        boolean isFramePortrait = frameBitmap.getHeight() > frameBitmap.getWidth();
+
+                                        // Eğer Fotoğraf YATAY ama Çerçeve DİK ise -> Çerçeveyi çevir!
+                                        if (isBitmapLandscape && isFramePortrait) {
+                                            android.graphics.Matrix frameMatrix = new android.graphics.Matrix();
+                                            // -90 derece çevirerek yatay yapıyoruz
+                                            frameMatrix.postRotate(-90);
+
+                                            android.graphics.Bitmap rotatedFrame = android.graphics.Bitmap.createBitmap(
+                                                    frameBitmap, 0, 0, frameBitmap.getWidth(), frameBitmap.getHeight(), frameMatrix, true);
+
+                                            if (frameBitmap != rotatedFrame) {
+                                                frameBitmap.recycle();
+                                                frameBitmap = rotatedFrame;
+                                            }
+                                        }
+
+                                        // NOT: Eğer Fotoğraf DİK ise (Portrait), çerçeve de zaten DİK olduğu için
+                                        // hiçbir şey yapmıyoruz. Olduğu gibi çiziyoruz.
+
+                                        android.graphics.Canvas canvas = new android.graphics.Canvas(bitmap);
+                                        android.graphics.Rect destRect = new android.graphics.Rect(0, 0, bitmap.getWidth(), bitmap.getHeight());
+                                        canvas.drawBitmap(frameBitmap, null, destRect, new android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG));
+
+                                        frameBitmap.recycle();
                                     }
                                 }
                             }
-                        }
 
-                        // LUT yoksa normal kaydet (Burada EXIF korunur çünkü byte'lara dokunmuyoruz)
-                        save(bytes);
+                            // --- D. KAYDET ---
+                            try (java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
+                                bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, out);
+                                byte[] newBytes = out.toByteArray();
+                                save(newBytes);
+                            } catch (Exception e) { e.printStackTrace(); }
+
+                            bitmap.recycle();
+                        }
                     }
                 } catch (Exception e) { e.printStackTrace(); }
             }, mBackgroundHandler);
@@ -1029,7 +1417,7 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
 
-            // İzin Kontrolü ve Kamerayı Açma
+            // İzin Kontrolü
             if (androidx.core.app.ActivityCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
                 androidx.core.app.ActivityCompat.requestPermissions(this, new String[]{android.Manifest.permission.CAMERA}, REQUEST_CAMERA_PERMISSION);
                 return;
@@ -1040,6 +1428,9 @@ public class MainActivity extends AppCompatActivity {
             e.printStackTrace();
         }
     }
+
+
+
 
     private void createCameraPreview() {
         try {
@@ -1155,31 +1546,67 @@ public class MainActivity extends AppCompatActivity {
             captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
             SurfaceTexture texture = textureView.getSurfaceTexture();
             assert texture != null;
-            texture.setDefaultBufferSize(imageDimension.getWidth(), imageDimension.getHeight());
+
+            if (imageDimension != null) {
+                texture.setDefaultBufferSize(imageDimension.getWidth(), imageDimension.getHeight());
+            }
+
             Surface surface = new Surface(texture);
             captureRequestBuilder.addTarget(surface);
 
+            // --- 1. WYSIWYG (Ne Görüyorsan Onu Al) AYARLARI ---
+            // Bu satır çok kritiktir: Önizlemeyi tam sensör boyutuna kilitler.
+            if (sensorArraySize != null) {
+                captureRequestBuilder.set(CaptureRequest.SCALER_CROP_REGION, sensorArraySize);
+            }
+
+            // Odaklama modu
+            captureRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
+
+            if (bestFpsRange != null) {
+                captureRequestBuilder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, bestFpsRange);
+            }
+
             if (isManualMode) {
+                // MANUAL MOD
                 captureRequestBuilder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_OFF);
                 captureRequestBuilder.set(CaptureRequest.SENSOR_SENSITIVITY, selectedIso);
                 captureRequestBuilder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, selectedShutter);
-                cameraCaptureSessions.setRepeatingRequest(captureRequestBuilder.build(), captureCallback, mBackgroundHandler);
+
             } else {
+                // AUTO MOD
                 captureRequestBuilder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
                 captureRequestBuilder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON);
-                if (bestFpsRange != null) captureRequestBuilder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, bestFpsRange);
-                captureRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
-
-                // Şok Tedavisi Triggerları
-                captureRequestBuilder.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CameraMetadata.CONTROL_AE_PRECAPTURE_TRIGGER_CANCEL);
-                cameraCaptureSessions.capture(captureRequestBuilder.build(), null, mBackgroundHandler);
-                captureRequestBuilder.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CameraMetadata.CONTROL_AE_PRECAPTURE_TRIGGER_START);
-                cameraCaptureSessions.capture(captureRequestBuilder.build(), null, mBackgroundHandler);
-                captureRequestBuilder.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CameraMetadata.CONTROL_AE_PRECAPTURE_TRIGGER_IDLE);
-
-                cameraCaptureSessions.setRepeatingRequest(captureRequestBuilder.build(), captureCallback, mBackgroundHandler);
+                captureRequestBuilder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, mEvIndex);
             }
-        } catch (CameraAccessException e) { e.printStackTrace(); }
+
+            cameraCaptureSessions.setRepeatingRequest(captureRequestBuilder.build(), captureCallback, mBackgroundHandler);
+
+        } catch (CameraAccessException e) {
+            e.printStackTrace();
+        }
+    }
+
+    // --- SHUTTER EFEKTİ METODU ---
+    private void triggerShutterAnimation() {
+        if (shutterFlash != null) {
+            // Görünür yap ve en öne getir
+            shutterFlash.setVisibility(View.VISIBLE);
+            shutterFlash.bringToFront();
+
+            // Başlangıç durumu (Simsiyah)
+            shutterFlash.setAlpha(1f);
+
+            // Animasyon (Hızla yok ol)
+            shutterFlash.animate()
+                    .alpha(0f)
+                    .setDuration(150)
+                    .setStartDelay(50)
+                    .withEndAction(() -> {
+                        shutterFlash.setVisibility(View.GONE);
+                    })
+                    .start();
+        }
     }
 
     private void takePicture() {
@@ -1187,56 +1614,121 @@ public class MainActivity extends AppCompatActivity {
         try {
             final CaptureRequest.Builder captureBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
 
-            // Hedef Seçimi (RAW veya JPEG)
+            // 1. HEDEF BELİRLEME
             if (isRawMode && mContainsRawCapability && imageReaderRaw != null) {
                 captureBuilder.addTarget(imageReaderRaw.getSurface());
-                android.util.Log.d("HeyCam", "RAW MODUNDA FOTOĞRAF ÇEKİLİYOR");
-
-                // ========================================
-                // SIFIR PROCESS - TÜM OTOMATİK İŞLEMLERİ KAPAT
-                // ========================================
+                // RAW Ayarları (Sıfır Müdahale)
                 captureBuilder.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_OFF);
-                captureBuilder.set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_OFF);
-                captureBuilder.set(CaptureRequest.HOT_PIXEL_MODE, CaptureRequest.HOT_PIXEL_MODE_OFF);
                 captureBuilder.set(CaptureRequest.COLOR_CORRECTION_MODE, CaptureRequest.COLOR_CORRECTION_MODE_TRANSFORM_MATRIX);
                 captureBuilder.set(CaptureRequest.TONEMAP_MODE, CaptureRequest.TONEMAP_MODE_FAST);
-
-                // Lens düzeltmelerini kapat (mevcut cihazda destekleniyorsa)
-                captureBuilder.set(CaptureRequest.DISTORTION_CORRECTION_MODE, CaptureRequest.DISTORTION_CORRECTION_MODE_OFF);
-
-                android.util.Log.d("HeyCam", "Tüm işleme ayarları kapatıldı - Sıfır process aktif");
-
             } else {
                 captureBuilder.addTarget(imageReader.getSurface());
-                android.util.Log.d("HeyCam", "JPEG MODUNDA FOTOĞRAF ÇEKİLİYOR");
-                android.util.Log.d("HeyCam", "isRawMode: " + isRawMode + ", mContainsRawCapability: " + mContainsRawCapability + ", imageReaderRaw: " + (imageReaderRaw != null));
             }
 
+            // --- 2. ZOOM SORUNU ÇÖZÜMÜ ---
+            // A) Kırpmayı Engelle (Tam sensör boyutunu kullan)
+            if (sensorArraySize != null) {
+                captureBuilder.set(CaptureRequest.SCALER_CROP_REGION, sensorArraySize);
+            }
+
+            // B) Lens Düzeltmelerini Kapat (Bu düzeltmeler kenarları kırpar)
+            // Hem RAW hem JPEG için kapatıyoruz ki görüntü eşleşsin.
+            captureBuilder.set(CaptureRequest.DISTORTION_CORRECTION_MODE, CaptureRequest.DISTORTION_CORRECTION_MODE_OFF);
+            // -----------------------------
+
+            // 3. POZLAMA AYARLARI
             if (isManualMode) {
                 captureBuilder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_OFF);
                 captureBuilder.set(CaptureRequest.SENSOR_SENSITIVITY, selectedIso);
                 captureBuilder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, selectedShutter);
+                android.util.Log.d("HeyCam", "Capture: Manual ISO=" + selectedIso);
             } else {
                 captureBuilder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
                 captureBuilder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON);
+
+                int targetEv = isRawMode ? 0 : mEvIndex;
+                captureBuilder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, targetEv);
+                android.util.Log.d("HeyCam", "Capture: Auto EV Index=" + targetEv);
             }
 
-            // --- YENİ KOD ---
-            // Doğrudan sensörden gelen açıyı kullan
+            // 4. DİĞER AYARLAR
             int correctOrientation = getJpegOrientation();
             captureBuilder.set(CaptureRequest.JPEG_ORIENTATION, correctOrientation);
+            captureBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
 
+            // 5. ÇEKİM
             cameraCaptureSessions.capture(captureBuilder.build(), new CameraCaptureSession.CaptureCallback() {
                 @Override
                 public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
                     super.onCaptureCompleted(session, request, result);
-                    mLastResult = result; // DNG için metadata sakla
+                    mLastResult = result;
+                    android.util.Log.d("HeyCam", "Photo Taken!");
                 }
             }, mBackgroundHandler);
-        } catch (CameraAccessException e) { e.printStackTrace(); }
+
+        } catch (CameraAccessException e) {
+            e.printStackTrace();
+        }
     }
 
+    // RAW/JPEG Moduna göre arayüzü güncelleyen metod
+    private void updateUiForFormat() {
+        // 1. Format İkonunu Değiştir
+        if (isRawMode) {
+            btnFormat.setImageResource(R.drawable.ic_raw_indicator);
+            btnFormat.setAlpha(1.0f);
+        } else {
+            btnFormat.setImageResource(R.drawable.ic_jpeg_indicator);
+            btnFormat.setAlpha(0.9f);
+        }
 
+        // RAW Modunda Özellikler Kapalı (False), JPEG'de Açık (True)
+        boolean areFeaturesEnabled = !isRawMode;
+
+        // 2. LUT Butonu Yönetimi
+        if (btnLut != null) {
+            btnLut.setEnabled(areFeaturesEnabled);
+            if (areFeaturesEnabled) {
+                updateLutIconState();
+            } else {
+                btnLut.setAlpha(0.3f);
+            }
+        }
+
+        // 3. FRAME Yönetimi (DÜZELTME BURADA)
+        if (btnFrames != null) {
+            btnFrames.setEnabled(areFeaturesEnabled);
+
+            if (areFeaturesEnabled) {
+                // JPEG: Varsa çerçeveyi geri getir ve ikonu düzelt
+                updateFrameState();
+            } else {
+                // RAW: Butonu söndür VE ekrandaki çerçeveyi gizle
+                btnFrames.setAlpha(0.3f);
+                if (frameOverlay != null) {
+                    frameOverlay.setVisibility(View.GONE);
+                }
+            }
+        }
+
+        // 4. EV (Pozlama) Kontrolleri Yönetimi
+        if (btnEvPlus != null) btnEvPlus.setEnabled(areFeaturesEnabled);
+        if (btnEvMinus != null) btnEvMinus.setEnabled(areFeaturesEnabled);
+
+        float targetAlpha = areFeaturesEnabled ? 1.0f : 0.3f;
+
+        if (evControlContainer != null) {
+            evControlContainer.animate().alpha(targetAlpha).setDuration(200).start();
+        }
+        if (txtEvLabel != null) {
+            txtEvLabel.animate().alpha(targetAlpha).setDuration(200).start();
+        }
+
+        // 5. Kullanıcıya Mesaj
+        if (isRawMode) {
+            showCenteredMessage("RAW: All Effects Disabled");
+        }
+    }
     private void startFocus(float touchX, float touchY) {
         if (cameraDevice == null || cameraCaptureSessions == null || sensorArraySize == null) return;
 
@@ -1488,26 +1980,96 @@ public class MainActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
 
+
+
+        // 1. Güvenlik Modunu Kapat
+        getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
+
+        // 2. Perdeyi Kaldır (Animasyon)
+        if (shutterFlash != null) {
+            shutterFlash.setVisibility(View.VISIBLE);
+            shutterFlash.setAlpha(1f);
+            shutterFlash.animate()
+                    .alpha(0f)
+                    .setDuration(300)
+                    .withEndAction(() -> shutterFlash.setVisibility(View.GONE))
+                    .start();
+        }
+
+        // --- DÜZELTME BURADA: EV DEĞERLERİNİ SIFIRLA ---
+        mEvIndex = 0; // Mantığı sıfırla
+        if (txtEvValue != null) {
+            txtEvValue.setText("0.0"); // Görünümü sıfırla
+        }
+
+        // --- DÜZELTME BURADA: GLYPH DURUMUNU SIFIRLA ---
+        if (glyphHelper != null) {
+            glyphHelper.clearDisplay(); // Varsa ışığı söndür
+            glyphHelper.reset();        // Bağlantı bilgisini unut (Taze başlangıç için)
+        }
+        // ----------------------------------------------
+
+        // Thread Başlat
         startBackgroundThread();
 
-
-
-        // Sensörü aç
+        // Sensörü Aç
         if (orientationEventListener != null && orientationEventListener.canDetectOrientation()) {
             orientationEventListener.enable();
         }
 
+        // Kamerayı Aç
         if (textureView.isAvailable()) {
             openCamera();
-            // EKLENEN KISIM: Geri dönüşte uzama sorununu önlemek için ayarı tazele
+            // Dönüşte texture bozulmasını önlemek için gecikmeli ayar
             textureView.postDelayed(() -> {
                 configureTransform(textureView.getWidth(), textureView.getHeight());
-            }, 500); // Yarım saniye bekle ve düzelt
+            }, 500);
         } else {
             textureView.setSurfaceTextureListener(textureListener);
         }
 
+
+        // İkonları güncelle
         updateLutIconState();
+        updateFrameState(); // Frame durumunu da güncelle
+    }
+
+
+    private void updateFrameState() {
+        // Önce butonu XML'den bulduğumuza emin olalım (Eğer tanımlı değilse)
+        // Eğer sınıf başında 'private ImageButton btnFrames;' tanımlı değilse tanımla
+        // ve onCreate içinde 'btnFrames = findViewById(R.id.btn_frames);' yap.
+        // Ama şimdilik view üzerinden gidelim:
+
+        if (btnFrames == null) btnFrames = findViewById(R.id.btn_frames); // Garanti olsun
+
+        String currentFrame = prefs.getString("current_frame_name", "");
+
+        if (!currentFrame.isEmpty()) {
+            File file = new File(getFilesDir(), "frames/" + currentFrame);
+            if (file.exists()) {
+                // Dosyayı Bitmap olarak yükle ve Overlay'e koy
+                android.graphics.Bitmap frameBmp = android.graphics.BitmapFactory.decodeFile(file.getAbsolutePath());
+                frameOverlay.setImageBitmap(frameBmp);
+                frameOverlay.setVisibility(View.VISIBLE);
+
+                // --- İKON DEĞİŞİMİ: AKTİF ---
+                btnFrames.setImageResource(R.drawable.ic_frame_icon_selected);
+                btnFrames.setAlpha(1.0f);
+            } else {
+                frameOverlay.setVisibility(View.GONE);
+                // Dosya bulunamadı, varsayılan ikon
+                btnFrames.setImageResource(R.drawable.ic_frame_icon);
+                btnFrames.setAlpha(0.7f);
+            }
+        } else {
+            // Frame Yok, Varsayılan ikon
+            frameOverlay.setVisibility(View.GONE);
+
+            // --- İKON DEĞİŞİMİ: PASİF ---
+            btnFrames.setImageResource(R.drawable.ic_frame_icon);
+            btnFrames.setAlpha(0.7f);
+        }
     }
 
     // Bu yardımcı metodu da sınıfın içine bir yere ekle
@@ -1557,6 +2119,12 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onPause() {
+
+        // 1. Işıkları Söndür (Zombi ışık kalmasın)
+        if (glyphHelper != null) {
+            glyphHelper.clearDisplay(); // Sadece temizle, bağlantıyı koparma
+        }
+
         // 1. Oryantasyon sensörünü sustur
         if (orientationEventListener != null) {
             orientationEventListener.disable();
@@ -1611,6 +2179,43 @@ public class MainActivity extends AppCompatActivity {
                 finish();
             }
         }
+    }
+
+    // --- HAZIR ÇERÇEVELERİ YÜKLEME ---
+    private void copyDefaultFrames() {
+        boolean isFramesInstalled = prefs.getBoolean("are_default_frames_installed", false);
+        if (isFramesInstalled) return;
+
+        new Thread(() -> {
+            try {
+                String[] files = getAssets().list("sample_frames");
+                if (files == null) return;
+
+                File destDir = new File(getFilesDir(), "frames");
+                if (!destDir.exists()) destDir.mkdirs();
+
+                for (String filename : files) {
+                    if (!filename.toLowerCase().endsWith(".png")) continue;
+
+                    File outFile = new File(destDir, filename);
+                    if (outFile.exists()) continue;
+
+                    try (java.io.InputStream in = getAssets().open("sample_frames/" + filename);
+                         java.io.FileOutputStream out = new java.io.FileOutputStream(outFile)) {
+
+                        byte[] buffer = new byte[1024];
+                        int read;
+                        while ((read = in.read(buffer)) != -1) {
+                            out.write(buffer, 0, read);
+                        }
+                    }
+                }
+
+                prefs.edit().putBoolean("are_default_frames_installed", true).apply();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }).start();
     }
 
 
