@@ -10,96 +10,62 @@ My goal was simple: capture what the lens and sensor actually see, with minimal 
 
 ## What is HeyCam?
 
-HeyCam is a minimalist camera app with manual controls that lets you capture photos in both **JPEG** and **RAW (DNG)** formats. You have full control over **shutter speed** and **ISO**, putting the power back in your hands.
+HeyCam is a minimalist camera app with manual controls that lets you capture photos in both **JPEG** and **RAW (DNG)** formats. You have full control over your hardware, putting the power back in your hands.
 
 Since JPEG files still undergo some processing by Android's algorithms, I added **RAW support** for true zero-processing photography. 
 
-**Want true zero processing?** Switch to **Manual mode** and shoot in **RAW format**. The photos might look flat or low-quality at first - but that's the point! You're getting the unprocessed image data straight from the sensor, with no interference from your device, Android, or any AI assistance.
+**Want true zero processing?** Switch to **Manual mode** and shoot in **RAW format**. The photos might look flat or low-quality at first - but that's the point! You're getting the unprocessed image data straight from the sensor.
 
 ## Features
 
-### Auto Mode
-- Tap anywhere on screen to auto-adjust shutter speed, ISO, and focus
-- Quick and convenient for everyday shots
+### ⏱️ Professional Intervalometer
+* **Burst & Interval Control:** Dedicated menu to set countdown intervals (1-10s) and photo count (1-10 shots) for time-lapse or group shots.
+* **Auditory Feedback:** Integrated Sound Manager for countdown beeps, shutter feedback, and completion chimes.
+* **Floating HUD:** High-visibility countdown overlay distinct from the viewfinder.
+
+### 🔴 Nothing Phone (3) Exclusive: Glyph Matrix
+* **Real-Time Countdown:** Integrated `com.nothing.ketchum` SDK to display the timer directly on the rear LED Matrix.
+* **Smart Orientation:** Glyph numbers rotate automatically based on device orientation.
+* **Custom Completion Pattern:** Unique visual animation upon finishing a sequence.
+
+### 🖼️ Creative Suite: Frames & LUTs
+* **Custom LUT Support:** Import standard `.cube` files for cinematic color grading.
+* **Frame Engine:** Support for `.png` overlays with smart rotation that adapts to image orientation.
+* **RAW Safety:** LUTs, Frames, and EV controls are automatically disabled in RAW mode to preserve data integrity.
+
+### 🎛️ UI/UX Overhaul
+* **Active Auto Mode:** Replaced passive auto with an **Exposure Compensation (EV)** panel for precise brightness control.
+* **Floating Layout Engine:** Controls now float perfectly centered regardless of screen aspect ratio.
+* **WYSIWYG Preview:** Fixed viewfinder scaling to match the sensor output 1:1, removing distortion correction cropping.
+
+## Modes & Controls
+
+### Auto Mode (Enhanced)
+- Active Exposure Compensation (EV) with hardware-specific step sizes.
+- Replaces ISO/Shutter wheels with intuitive (+) and (-) buttons.
 
 ### Manual Mode
-- Full control over shutter speed and ISO via interactive slider
-- Current settings displayed on preview window
-- Tap to focus only - exposure stays locked to your settings
+- Full control over shutter speed and ISO via interactive slider.
+- Tap to focus only - exposure stays locked to your settings.
 
-### Format Options
-- **JPEG**: Standard format with minimal processing
-- **RAW (DNG)**: Zero processing, pure sensor data
-- Switch between formats by tapping the format indicator in the top menu
-
-## Advanced Color Grading
-
-### Custom LUT Support
-* **Standard Compatibility:** Users can now import standard `.cube` files to apply cinematic color grading to photos instantly.
-* **Seamless Integration:** Apply professional-grade color transforms directly within the camera pipeline.
-
-### LUT Manager
-A dedicated, immersive interface to manage your filter library:
-* **Import:** Load `.cube` files directly from your device storage.
-* **Rename:** Long-press any LUT to rename it, featuring a dynamic **Material Design** dialog for a refined user experience.
-* **Manage:** Easily delete unwanted filters or restore built-in defaults if needed.
-
-### Key Features
-* **No LUT Option:** Quickly revert to the original camera look without deleting your LUT files.
-* **Pre-loaded Presets:** Ships with a curated set of sample cinematic looks (assets) that are automatically installed on the first run.
-* **Dynamic UI:** Fluid transitions and a clean interface designed for high-performance color manipulation.
-
-### Technical Details
-- **Rear camera only** - no front camera access
-- **Main camera sensor only** - Due to Android and manufacturer restrictions, access to ultra-wide or telephoto lenses is limited
-- **Zero processing in RAW mode** - All automatic corrections disabled:
-  - Noise reduction: OFF
-  - Edge enhancement: OFF
-  - Hot pixel correction: OFF
-  - Color correction: Minimal
-  - Lens distortion correction: OFF
+## Technical Details
+- **Rear camera only** - no front camera access.
+- **Main camera sensor only** - Access to ultra-wide or telephoto lenses is limited due to API restrictions.
+- **Zero processing in RAW mode** - All automatic corrections disabled (Noise reduction, Edge enhancement, Hot pixel correction, Lens distortion correction).
 
 ## Why RAW?
-
-RAW files capture pure sensor data without processing. They may look:
-- Flatter (lower contrast)
-- Less saturated
-- Softer (no sharpening)
-- Noisier (no noise reduction)
-
-This is **not** poor quality - it's **unprocessed reality**. Edit RAW files in Lightroom, Snapseed, or any RAW editor to achieve your desired look with maximum flexibility.
-
+RAW files capture pure sensor data. They may look flatter or noisier, but they provide **unprocessed reality**. Edit these in Lightroom or Snapseed for maximum flexibility.
 
 ## Installation
-
-1. Download the latest APK from [Releases](../../releases)
-2. Enable "Install from unknown sources" in your Android settings
-3. Install and grant camera permissions
-
-## Known Limitations
-
-- Front camera not supported
-- Limited to main rear camera sensor
-- Some devices may have restricted RAW support
-- Bugs may occur - I'm continuously improving the app when time permits
+1. Download the latest APK from [Releases](../../releases).
+2. Enable "Install from unknown sources" in your Android settings.
+3. Install and grant camera permissions.
 
 ## Technical Stack
-
 - **Language**: Java
-- **Min SDK**: 24 (Android 7.0)
-- **Target SDK**: 34
 - **Camera API**: Camera2 API
-- **Format Support**: JPEG, DNG (RAW)
-
-## Contributing
-
-Found a bug or have a feature request? Feel free to open an issue!
-
-
-## Acknowledgments
-
-Built with the goal of giving photographers true control over their mobile photography, free from unwanted AI processing and automatic "enhancements".
+- **Key Libraries**: `com.nothing.ketchum` (Glyph SDK)
 
 ---
 
-**Note**: This app is designed for photographers who want full manual control and understand RAW workflow. If you prefer point-and-shoot convenience with automatic enhancements, your phone's native camera app might be a better choice.
+**Note**: This app is designed for photographers who want full manual control. If you prefer point-and-shoot convenience with AI enhancements, your phone's native camera app might be a better choice.
