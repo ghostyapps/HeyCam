@@ -87,6 +87,11 @@ public class MainActivity extends AppCompatActivity {
     private View wheelNeedle;
     private View shutterFlash;
 
+    // --- FLASH MODU DEĞİŞKENLERİ ---
+    private ImageButton btnFlash;
+    // 0: OFF, 1: ON (Fotoğrafta Patla), 2: TORCH (Fener)
+    private int currentFlashMode = 0;
+
     private ImageButton btnGallery;
     private ImageButton btnModeSwitch;
 
@@ -141,6 +146,9 @@ public class MainActivity extends AppCompatActivity {
 
     // Sınıfın başındaki tanımlarda:
     private ImageButton btnFrames; // View yerine ImageButton yap
+
+
+    private Surface mPreviewSurface;
 
 
     // --- 3. CAMERA2 API BİLEŞENLERİ ---
@@ -516,9 +524,9 @@ public class MainActivity extends AppCompatActivity {
         btnTimer = findViewById(R.id.btn_timer);
         btnTimer.setOnClickListener(v -> showTimerDialog());
 
-        // --- 4. GALERİ BUTONU ---
         ImageButton btnGallery = findViewById(R.id.btn_gallery);
         if (btnGallery != null) {
+            // Karmaşık izin kontrolünü sildik, direkt açıyoruz.
             btnGallery.setOnClickListener(v -> openLastPhoto());
         }
 
@@ -571,6 +579,23 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        // MainActivity.java -> setupButtons() içine ekle:
+
+        btnFlash = findViewById(R.id.btn_flash_toggle);
+        btnFlash.setOnClickListener(v -> {
+            // Modu döngüye sok: 0 -> 1 -> 2 -> 0
+            currentFlashMode = (currentFlashMode + 1) % 3;
+
+            // İkonu ve UI'ı güncelle
+            updateFlashIcon();
+
+            // Kamerayı yeni moda göre güncelle (Özellikle Torch için anlık tepki gerekir)
+            updatePreview();
+
+            // Titreşim ver
+            v.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
+        });
+
         // --- 7. FOTOĞRAF ÇEKME ---
         btnTakePhoto.setOnClickListener(v -> {
             v.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
@@ -581,6 +606,25 @@ public class MainActivity extends AppCompatActivity {
         // --- 8. TEKERLEK SEÇİMİ ---
         if (btnIso != null) btnIso.setOnClickListener(v -> switchWheelMode(WheelMode.ISO));
         if (btnShutter != null) btnShutter.setOnClickListener(v -> switchWheelMode(WheelMode.SHUTTER));
+    }
+
+    private void updateFlashIcon() {
+        if (btnFlash == null) return;
+
+        switch (currentFlashMode) {
+            case 0: // OFF
+                btnFlash.setImageResource(R.drawable.ic_flash_off);
+                btnFlash.setAlpha(0.6f); // Kapalıyken biraz sönük olsun
+                break;
+            case 1: // ON (FLASH)
+                btnFlash.setImageResource(R.drawable.ic_flash_on);
+                btnFlash.setAlpha(1.0f);
+                break;
+            case 2: // TORCH
+                btnFlash.setImageResource(R.drawable.ic_flash_torch);
+                btnFlash.setAlpha(1.0f);
+                break;
+        }
     }
 
 
@@ -1445,42 +1489,34 @@ public class MainActivity extends AppCompatActivity {
             SurfaceTexture texture = textureView.getSurfaceTexture();
             assert texture != null;
 
-            // Buffer boyutunu ayarla
             if (imageDimension != null) {
                 texture.setDefaultBufferSize(imageDimension.getWidth(), imageDimension.getHeight());
             }
 
-            Surface surface = new Surface(texture);
+            // --- DÜZELTME BURADA (Arkadaşının 2. Uyarısı) ---
+            // Asla "varsa release et" demiyoruz. Varsa KULLAN diyoruz.
+            // Sadece null ise yeni oluşturuyoruz.
+            if (mPreviewSurface == null) {
+                mPreviewSurface = new Surface(texture);
+            }
 
-            // DÜZELTME: 'RequestBuilder' yerine 'captureRequestBuilder' kullanıyoruz
+            // Builder oluştur
             captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
-            captureRequestBuilder.addTarget(surface);
+            captureRequestBuilder.addTarget(mPreviewSurface);
 
-            // --- YÜZEY LİSTESİ (PREVIEW + JPEG + RAW) ---
+            // --- YÜZEY LİSTESİ ---
             java.util.List<Surface> outputSurfaces = new java.util.ArrayList<>();
-            outputSurfaces.add(surface); // Ekran
+            outputSurfaces.add(mPreviewSurface);
 
-            // JPEG Kaydedici
-            if (imageReader != null) {
-                outputSurfaces.add(imageReader.getSurface());
-            }
+            if (imageReader != null) outputSurfaces.add(imageReader.getSurface());
+            if (mContainsRawCapability && imageReaderRaw != null) outputSurfaces.add(imageReaderRaw.getSurface());
 
-            // RAW Kaydedici (Cihaz destekliyorsa)
-            if (mContainsRawCapability && imageReaderRaw != null) {
-                outputSurfaces.add(imageReaderRaw.getSurface());
-            }
-
-            // --- OTURUM BAŞLATMA ---
             cameraDevice.createCaptureSession(outputSurfaces, new CameraCaptureSession.StateCallback() {
                 @Override
                 public void onConfigured(@NonNull CameraCaptureSession cameraCaptureSession) {
                     if (cameraDevice == null) return;
-
                     cameraCaptureSessions = cameraCaptureSession;
-
-                    // Matrix ayarını yap
                     configureTransform(textureView.getWidth(), textureView.getHeight());
-
                     updatePreview();
                 }
 
@@ -1494,6 +1530,7 @@ public class MainActivity extends AppCompatActivity {
             e.printStackTrace();
         }
     }
+
 
     private void configureTransform(int viewWidth, int viewHeight) {
         if (null == textureView || null == imageDimension) {
@@ -1551,41 +1588,50 @@ public class MainActivity extends AppCompatActivity {
     private void updatePreview() {
         if (cameraDevice == null) return;
         try {
-            captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
-            SurfaceTexture texture = textureView.getSurfaceTexture();
-            assert texture != null;
+            // Builder yoksa oluştur (Yüzey kontrolüyle birlikte)
+            if (captureRequestBuilder == null) {
+                captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
 
-            if (imageDimension != null) {
-                texture.setDefaultBufferSize(imageDimension.getWidth(), imageDimension.getHeight());
+                // Yüzey kazara null olduysa (çok nadir), mecburen oluştur
+                if (mPreviewSurface == null) {
+                    SurfaceTexture texture = textureView.getSurfaceTexture();
+                    if (texture != null) {
+                        if (imageDimension != null) texture.setDefaultBufferSize(imageDimension.getWidth(), imageDimension.getHeight());
+                        mPreviewSurface = new Surface(texture);
+                    }
+                }
+                if (mPreviewSurface != null) captureRequestBuilder.addTarget(mPreviewSurface);
             }
 
-            Surface surface = new Surface(texture);
-            captureRequestBuilder.addTarget(surface);
+            // Trigger Temizliği
+            captureRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_IDLE);
+            captureRequestBuilder.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CameraMetadata.CONTROL_AE_PRECAPTURE_TRIGGER_IDLE);
 
-            // --- 1. WYSIWYG (Ne Görüyorsan Onu Al) AYARLARI ---
-            // Bu satır çok kritiktir: Önizlemeyi tam sensör boyutuna kilitler.
+            // --- DÜZELTME BURADA (Arkadaşının 1. Uyarısı) ---
+            // Lensi fiziksel olarak "KİLİTLİ/AKTİF" tutmak için OIS açıyoruz.
+            // Bu, lensin motorlarını canlı tutar ve düşmesini engeller.
+            captureRequestBuilder.set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_ON);
+
+            // Diğer Ayarlar
             if (sensorArraySize != null) {
                 captureRequestBuilder.set(CaptureRequest.SCALER_CROP_REGION, sensorArraySize);
             }
-
-            // Odaklama modu
             captureRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
 
-            if (bestFpsRange != null) {
-                captureRequestBuilder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, bestFpsRange);
-            }
-
             if (isManualMode) {
-                // MANUAL MOD
                 captureRequestBuilder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_OFF);
                 captureRequestBuilder.set(CaptureRequest.SENSOR_SENSITIVITY, selectedIso);
                 captureRequestBuilder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, selectedShutter);
-
             } else {
-                // AUTO MOD
                 captureRequestBuilder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
                 captureRequestBuilder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON);
                 captureRequestBuilder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, mEvIndex);
+            }
+
+            if (currentFlashMode == 2) {
+                captureRequestBuilder.set(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_TORCH);
+            } else {
+                captureRequestBuilder.set(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_OFF);
             }
 
             cameraCaptureSessions.setRepeatingRequest(captureRequestBuilder.build(), captureCallback, mBackgroundHandler);
@@ -1594,6 +1640,9 @@ public class MainActivity extends AppCompatActivity {
             e.printStackTrace();
         }
     }
+
+
+
 
     // --- SHUTTER EFEKTİ METODU ---
     private void triggerShutterAnimation() {
@@ -1624,20 +1673,21 @@ public class MainActivity extends AppCompatActivity {
             // 1. İsteği oluştur
             final CaptureRequest.Builder captureBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
 
-            // 2. HEDEF BELİRLEME (Çökmenin yaşandığı kritik kısım burasıydı)
+            // 2. HEDEF BELİRLEME
             Surface targetSurface = null;
             if (isRawMode && mContainsRawCapability && imageReaderRaw != null) {
                 targetSurface = imageReaderRaw.getSurface();
                 captureBuilder.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_OFF);
+                captureBuilder.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO);
+                captureBuilder.set(CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE, CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE_ON);
             } else if (imageReader != null) {
                 targetSurface = imageReader.getSurface();
             }
 
-            // Eğer hedef yoksa işlemi durdur (Crash koruması)
             if (targetSurface == null) return;
             captureBuilder.addTarget(targetSurface);
 
-            // 3. AYARLARI UYGULA (Zoom ve Pozlama)
+            // 3. AYARLARI UYGULA
             if (sensorArraySize != null) {
                 captureBuilder.set(CaptureRequest.SCALER_CROP_REGION, sensorArraySize);
             }
@@ -1653,7 +1703,37 @@ public class MainActivity extends AppCompatActivity {
             }
 
             captureBuilder.set(CaptureRequest.JPEG_ORIENTATION, getJpegOrientation());
+            // ÖNEMLİ: Çekim sırasında odaklamayı kilitleme veya değiştirme, olduğu gibi kalsın.
             captureBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
+
+            // --- FLASH MANTIĞI ---
+            if (currentFlashMode == 2) {
+                // TORCH: Fener gibi sürekli yanarak çek
+                captureBuilder.set(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_TORCH);
+                // Torch modunda AE modu değiştirmeye gerek yok, mevcut ışıkla çeker.
+
+            } else if (currentFlashMode == 1) {
+                // FLASH ON: Zorla Patlat
+
+                // 1. AE Modunu "Her Zaman Patla"ya zorla (Manual ayarları ezer, Auto'ya geçer)
+                captureBuilder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON_ALWAYS_FLASH);
+
+                // 2. Flash Modunu Tekli Yap
+                captureBuilder.set(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_SINGLE);
+
+                // 3. KRİTİK EKLEME: Tetikleyici (Trigger)
+                // Kameraya "Flash sekansını şimdi başlat" emri verir. Bunu koymazsak flash patlamaz.
+                captureBuilder.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CameraMetadata.CONTROL_AE_PRECAPTURE_TRIGGER_START);
+
+            } else {
+                // OFF: Asla yakma
+                captureBuilder.set(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_OFF);
+
+                // Eğer manual modda değilsek ve Flash OFF ise normal Auto moda dön
+                if (!isManualMode) {
+                    captureBuilder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON);
+                }
+            }
 
             // 4. ÇEKİMİ BAŞLAT
             cameraCaptureSessions.capture(captureBuilder.build(), new CameraCaptureSession.CaptureCallback() {
@@ -1662,11 +1742,14 @@ public class MainActivity extends AppCompatActivity {
                     super.onCaptureCompleted(session, request, result);
                     mLastResult = result;
 
-                    // SARSINTI ÖNLEYİCİ: Çekim biter bitmez önizlemeyi tazeleyerek lensi sabit tutuyoruz
+                    // --- SORUNUN ÇÖZÜLDÜĞÜ YER ---
+                    // Burada eskiden "CONTROL_AF_TRIGGER_CANCEL" komutu vardı.
+                    // O komut lensi B pozisyonuna (Sıfır noktasına) fırlatıyordu.
+                    // O kodu SİLDİK.
+
+                    // Sadece preview'i güncellememiz yeterli.
+                    // Lens zaten doğru yerdeyse (A pozisyonunda) kıpırdamadan orada kalacaktır.
                     try {
-                        // captureRequestBuilder (preview olan) kullanılıyor
-                        captureRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_CANCEL);
-                        session.capture(captureRequestBuilder.build(), null, mBackgroundHandler);
                         updatePreview();
                     } catch (Exception e) {
                         e.printStackTrace();
@@ -1678,6 +1761,7 @@ public class MainActivity extends AppCompatActivity {
             e.printStackTrace();
         }
     }
+
 
     // RAW/JPEG Moduna göre arayüzü güncelleyen metod
     private void updateUiForFormat() {
@@ -2037,9 +2121,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
 
-        // İkonları güncelle
-        updateLutIconState();
-        updateFrameState(); // Frame durumunu da güncelle
+        updateUiForFormat();
     }
 
 
@@ -2162,18 +2244,36 @@ public class MainActivity extends AppCompatActivity {
     // Add this method to properly close the camera
     private void closeCamera() {
         try {
-            // 1. Önce oturumu kapat
+            // 1. OTURUMU KAPAT VE LENSI SAKİNLEŞTİR
             if (null != cameraCaptureSessions) {
-                cameraCaptureSessions.stopRepeating(); // Yayını durdur
+                try {
+                    // AF İptal Emri: Lensi kapatmadan önce son bir "Rahatla" komutu.
+                    // Eğer captureRequestBuilder duruyorsa kullanıyoruz.
+                    if (captureRequestBuilder != null) {
+                        captureRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_CANCEL);
+                        cameraCaptureSessions.capture(captureRequestBuilder.build(), null, mBackgroundHandler);
+                    }
+
+                    // Yayını ve yakalamayı durdur (Lensi park et)
+                    cameraCaptureSessions.stopRepeating();
+                    cameraCaptureSessions.abortCaptures();
+
+                } catch (Exception e) {
+                    // Kapanırken hata alsa bile yut, devam et.
+                    e.printStackTrace();
+                }
+
                 cameraCaptureSessions.close();
                 cameraCaptureSessions = null;
             }
-            // 2. Kamera cihazını kapat
+
+            // 2. KAMERA CİHAZINI KAPAT
             if (null != cameraDevice) {
                 cameraDevice.close();
                 cameraDevice = null;
             }
-            // 3. ImageReader'ları temizle (Bellek sızıntısı için kritik)
+
+            // 3. OKUYUCULARI TEMİZLE (Memory Leak Önlemi)
             if (null != imageReader) {
                 imageReader.close();
                 imageReader = null;
@@ -2182,7 +2282,16 @@ public class MainActivity extends AppCompatActivity {
                 imageReaderRaw.close();
                 imageReaderRaw = null;
             }
-        } catch (CameraAccessException e) {
+
+            // --- 4. KRİTİK EKLENTİ: YÜZEYİ SERBEST BIRAK ---
+            // Arkadaşının bahsettiği "Sadece onPause/Çıkışta yap" kuralı burasıdır.
+            // Bunu yapmazsak uygulama tekrar açıldığında eski yüzeyle çakışır ve lens düşer.
+            if (mPreviewSurface != null) {
+                mPreviewSurface.release();
+                mPreviewSurface = null;
+            }
+
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }
@@ -2190,6 +2299,8 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+
+        // Mevcut Kamera izni kontrolün burada duruyor...
         if (requestCode == REQUEST_CAMERA_PERMISSION) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 if (textureView.isAvailable()) openCamera();

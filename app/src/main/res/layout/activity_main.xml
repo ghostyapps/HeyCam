@@ -8,7 +8,6 @@
     android:background="@android:color/black"
     tools:context=".MainActivity">
 
-    <!-- ÜST BAR -->
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/top_info_bar"
         android:layout_width="match_parent"
@@ -20,7 +19,6 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
-        <!-- SOL TARAFA ALINAN TIMER BUTONU -->
         <ImageButton
             android:id="@+id/btn_timer"
             android:layout_width="40dp"
@@ -34,8 +32,6 @@
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toBottomOf="parent"/>
 
-        <!-- SAĞ TARAFA TAŞINAN FRAME BUTONU -->
-        <!-- LUT butonunun soluna yapışık -->
         <ImageButton
             android:id="@+id/btn_frames"
             android:layout_width="40dp"
@@ -49,8 +45,6 @@
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toBottomOf="parent"/>
 
-        <!-- LUT BUTONU -->
-        <!-- Format butonunun soluna yapışık -->
         <ImageButton
             android:id="@+id/btn_lut_switch"
             android:layout_width="40dp"
@@ -64,7 +58,6 @@
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toBottomOf="parent"/>
 
-        <!-- FORMAT BUTONU (EN SAĞDA) -->
         <ImageButton
             android:id="@+id/btn_format_indicator"
             android:layout_width="40dp"
@@ -80,7 +73,6 @@
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 
-    <!-- 2. PREVIEW PENCERESİ (ESKİ SAĞLAM HALİ) -->
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/preview_card_container"
         app:cardBackgroundColor="@android:color/black"
@@ -96,7 +88,6 @@
 
         app:cardCornerRadius="20dp">
 
-        <!-- Sadece TextureView ve iç elemanlar var, FrameLayout YOK -->
         <com.ghostyapps.heycam.AutoFitTextureView
             android:id="@+id/texture_view"
             android:layout_width="match_parent"
@@ -144,22 +135,17 @@
 
     </com.google.android.material.card.MaterialCardView>
 
-    <!-- 3. ALT PANEL -->
     <LinearLayout
-        android:id="@+id/bottom_panel_container"
+        android:id="@+id/middle_control_panel"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:paddingTop="20dp"
-        android:paddingBottom="50dp"
-
+        android:gravity="center"
         app:layout_constraintTop_toBottomOf="@id/preview_card_container"
-        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/bottom_buttons_container"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintVertical_bias="1.0">
+        app:layout_constraintEnd_toEndOf="parent">
 
-        <!-- KONTROL ALANI (90dp) -->
         <FrameLayout
             android:layout_width="match_parent"
             android:layout_height="90dp"
@@ -231,11 +217,9 @@
             </LinearLayout>
         </FrameLayout>
 
-        <!-- ETİKET ALANI -->
         <FrameLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="25dp">
+            android:layout_height="wrap_content">
 
             <TextView
                 android:id="@+id/txt_ev_label"
@@ -289,33 +273,65 @@
             </LinearLayout>
         </FrameLayout>
 
-        <!-- EN ALT BUTONLAR -->
+    </LinearLayout>
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/bottom_buttons_container"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingBottom="50dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <ImageButton
+            android:id="@+id/take_photo"
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:background="@null"
+            android:scaleType="fitCenter"
+            android:src="@drawable/take_photo_selector"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent" />
+
+        <ImageButton
+            android:id="@+id/btn_gallery"
+            android:layout_width="30dp"
+            android:layout_height="30dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_gallery_indicator"
+            android:alpha="0.9"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toStartOf="@id/take_photo"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent" />
+
         <LinearLayout
-            android:layout_width="match_parent"
+            android:id="@+id/right_buttons_container"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:gravity="center_vertical|center_horizontal"
-            android:orientation="horizontal">
+            android:orientation="horizontal"
+            android:gravity="center"
+            app:layout_constraintStart_toEndOf="@id/take_photo"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent">
 
             <ImageButton
-                android:id="@+id/btn_gallery"
+                android:id="@+id/btn_flash_toggle"
                 android:layout_width="30dp"
                 android:layout_height="30dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_flash_off"
                 android:scaleType="fitCenter"
-                android:src="@drawable/ic_gallery_indicator"
-                android:alpha="0.9" />
+                android:padding="0dp" />
 
-            <View android:layout_width="50dp" android:layout_height="1dp" />
-
-            <ImageButton
-                android:id="@+id/take_photo"
-                android:layout_width="80dp"
-                android:layout_height="80dp"
-                android:background="@null"
-                android:scaleType="fitCenter"
-                android:src="@drawable/take_photo_selector" />
-
-            <View android:layout_width="50dp" android:layout_height="1dp" />
+            <Space
+                android:layout_width="25dp"
+                android:layout_height="wrap_content" />
 
             <ImageButton
                 android:id="@+id/btn_mode_switch"
@@ -325,13 +341,11 @@
                 android:scaleType="fitCenter"
                 android:src="@drawable/ic_auto_indicator"
                 android:alpha="0.9" />
-        </LinearLayout>
-    </LinearLayout>
 
-    <!-- ============================================== -->
-    <!-- 4. SAYAÇ (EN ÜST KATMAN)                       -->
-    <!-- ============================================== -->
-    <!-- CardView'ın İÇİNDE DEĞİL, XML'in EN ALTINDA -->
+        </LinearLayout>
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
     <TextView
         android:id="@+id/txt_countdown"
         android:layout_width="wrap_content"
@@ -352,21 +366,12 @@
         app:layout_constraintStart_toStartOf="@id/preview_card_container"
         app:layout_constraintEnd_toEndOf="@id/preview_card_container" />
 
-    <!-- ... (Yukarıdaki tüm kodlar bittikten sonra) ... -->
-
-    <!-- ============================================================== -->
-    <!-- 5. KESİN ÇÖZÜM: TAM EKRAN HUD KATMANI                          -->
-    <!-- ============================================================== -->
-    <!-- Bu katman her şeyin üzerindedir (Z-Index Kralı) -->
-    <!-- Clickable=false yaptık ki dokunmaları aşağıya (Kameraya) geçirsin -->
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:elevation="200dp"
         android:clickable="false"
         android:focusable="false">
-
-
     </FrameLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

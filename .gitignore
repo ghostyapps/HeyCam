@@ -20,3 +20,8 @@ local.properties
 *.apk
 app/release/
 output-metadata.json
+
+.tmp.drivedownload/
+.tmp.driveupload/
+app/nothing/
+app/standard/
