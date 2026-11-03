@@ -1,6 +1,7 @@
 package com.ghostyapps.heycam;
 
 import android.Manifest;
+import android.content.ActivityNotFoundException;
 import android.content.BroadcastReceiver;
 import android.content.ContentUris;
 import android.content.Context;
@@ -22,6 +23,7 @@ import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.StatFs;
+import android.os.SystemClock;
 import android.provider.MediaStore;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
@@ -63,6 +65,7 @@ import com.ghostyapps.heycam.ui.BatteryView;
 import com.ghostyapps.heycam.ui.CountdownView;
 import com.ghostyapps.heycam.ui.DialView;
 import com.ghostyapps.heycam.ui.ExposureScale;
+import com.ghostyapps.heycam.camera.QrScanner;
 import com.ghostyapps.heycam.ui.HistogramView;
 import com.ghostyapps.heycam.ui.ViewfinderOverlay;
 import com.ghostyapps.heycam.ui.WheelPicker;
@@ -77,6 +80,7 @@ public class MainActivity extends AppCompatActivity implements CameraController.
     private static final String PREF_PROCESSING = "jpeg_processing";
     private static final String PREF_GRID = "grid";
     private static final String PREF_HISTOGRAM = "histogram";
+    private static final String PREF_QR = "qr_scan";
     private static final String PREF_SOUND = "timer_sound_enabled";
     private static final String PREF_GLYPH = "glyph_enabled";
     private static final String PREF_INTERVAL = "timer_interval";
@@ -109,6 +113,7 @@ public class MainActivity extends AppCompatActivity implements CameraController.
     private int demoIso;
     private float demoFocus = -1f;
     private View curtain, toast, menu, sheetScrim;
+    private TextView qrChip;
     private TextView toastText, txtFormat, txtLut, txtTimer, txtFlash, txtCount, mode;
     private BatteryView battery;
     private DialView dial;
@@ -138,7 +143,7 @@ public class MainActivity extends AppCompatActivity implements CameraController.
     private boolean raw;
     private CameraController.Flash flash = CameraController.Flash.OFF;
     private CameraController.Processing processing = CameraController.Processing.MINIMAL;
-    private boolean grid, histogramOn, soundOn, glyphOn;
+    private boolean grid, histogramOn, soundOn, glyphOn, qrOn;
 
     // Interval timer
     private boolean timerRunning;
@@ -148,6 +153,15 @@ public class MainActivity extends AppCompatActivity implements CameraController.
     // Storage estimate
     private long jpegBytes = 5_500_000, dngBytes;
     private Bitmap histBitmap;
+
+    // QR scanning
+    private static final long QR_INTERVAL_MS = 350, QR_HOLD_MS = 1200;
+    private static final int QR_FRAME_W = 480, QR_FRAME_H = 640;
+    private QrScanner qrScanner;
+    private Bitmap qrBitmap;
+    private Uri qrLink;
+    private long qrLastSeen;
+    private int qrSession;
     private Runnable hideToast;
     private int menuSelected = -1;
 
@@ -175,9 +189,11 @@ public class MainActivity extends AppCompatActivity implements CameraController.
         }
         grid = prefs.getBoolean(PREF_GRID, false);
         histogramOn = prefs.getBoolean(PREF_HISTOGRAM, true);
+        qrOn = prefs.getBoolean(PREF_QR, true);
         soundOn = prefs.getBoolean(PREF_SOUND, true);
         glyphOn = prefs.getBoolean(PREF_GLYPH, true);
 
+        qrScanner = new QrScanner();
         saver = new PhotoSaver(this);
         saver.setListener(this);
         camera = new CameraController(this, this, saver);
@@ -230,12 +246,16 @@ public class MainActivity extends AppCompatActivity implements CameraController.
         updateCount();
         if (texture.isAvailable()) openCamera();
         main.post(histogramTick);
+        main.postDelayed(qrTick, QR_INTERVAL_MS);
     }
 
     @Override
     protected void onPause() {
+        qrSession++;
         if (timerRunning) cancelTimer(false);
         main.removeCallbacks(histogramTick);
+        main.removeCallbacks(qrTick);
+        showQrChip(null);
         main.removeCallbacks(endMagnify);
         orientationListener.disable();
         unregisterReceiver(batteryReceiver);
@@ -248,6 +268,7 @@ public class MainActivity extends AppCompatActivity implements CameraController.
     protected void onDestroy() {
         if (glyph != null) glyph.disconnect();
         if (sound != null) sound.release();
+        if (qrScanner != null) qrScanner.shutdown();
         super.onDestroy();
     }
 
@@ -298,6 +319,8 @@ public class MainActivity extends AppCompatActivity implements CameraController.
         menu = findViewById(R.id.menu);
         menuRows = findViewById(R.id.menu_rows);
         lensPicker = findViewById(R.id.lens_picker);
+        qrChip = findViewById(R.id.qr_chip);
+        qrChip.setOnClickListener(v -> openQrLink());
         sheetScrim = findViewById(R.id.sheet_scrim);
 
         cellS = new Cell(findViewById(R.id.cell_s), "S");
@@ -895,6 +918,62 @@ public class MainActivity extends AppCompatActivity implements CameraController.
         }
     };
 
+    // ================================================================== QR
+
+    private final Runnable qrTick = new Runnable() {
+        @Override public void run() {
+            boolean idle = demoBitmap == null && !timerRunning && texture.isAvailable()
+                    && menu.getVisibility() != View.VISIBLE && sheetScrim.getVisibility() != View.VISIBLE
+                    && curtain.getVisibility() != View.VISIBLE;
+            if (qrOn && idle) {
+                if (!qrScanner.isBusy()) {
+                    if (qrBitmap == null) qrBitmap = Bitmap.createBitmap(QR_FRAME_W, QR_FRAME_H, Bitmap.Config.ARGB_8888);
+                    Bitmap b = texture.getBitmap(qrBitmap);
+                    final int session = qrSession;
+                    if (b != null) qrScanner.scan(b, link -> {
+                        if (session == qrSession && qrOn && link != null) {
+                            qrLastSeen = SystemClock.uptimeMillis();
+                            if (!link.equals(qrLink)) showQrChip(link);
+                        }
+                    });
+                }
+                // Hide a moment after the code leaves the frame so the button doesn't flicker.
+                if (qrLink != null && SystemClock.uptimeMillis() - qrLastSeen > QR_HOLD_MS) showQrChip(null);
+            } else if (qrLink != null) {
+                showQrChip(null);
+            }
+            main.postDelayed(this, QR_INTERVAL_MS);
+        }
+    };
+
+    private void showQrChip(Uri link) {
+        qrLink = link;
+        if (link == null) {
+            qrChip.setVisibility(View.GONE);
+            return;
+        }
+        String label;
+        if ("fido".equals(link.getScheme())) label = "Passkey sign-in";
+        else if ("http".equals(link.getScheme()) || "https".equals(link.getScheme())) label = link.getHost();
+        else label = link.getSchemeSpecificPart();
+        qrChip.setText(label != null ? label : link.toString());
+        if (qrChip.getVisibility() != View.VISIBLE) {
+            qrChip.setAlpha(0f);
+            qrChip.setVisibility(View.VISIBLE);
+            qrChip.animate().alpha(1f).setDuration(140).start();
+            qrChip.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
+        }
+    }
+
+    private void openQrLink() {
+        if (qrLink == null) return;
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, qrLink).addCategory(Intent.CATEGORY_BROWSABLE));
+        } catch (ActivityNotFoundException e) {
+            showToast("No app can open this link");
+        }
+    }
+
     private void showToast(String message) {
         toastText.setText(message);
         toast.animate().cancel();
@@ -956,6 +1035,11 @@ public class MainActivity extends AppCompatActivity implements CameraController.
             histogramOn = !histogramOn;
             prefs.edit().putBoolean(PREF_HISTOGRAM, histogramOn).apply();
             histogram.setVisibility(histogramOn ? View.VISIBLE : View.GONE);
+        });
+        row(idx, "QR scan", qrOn ? "On" : "Off", qrOn, null, () -> {
+            qrOn = !qrOn;
+            prefs.edit().putBoolean(PREF_QR, qrOn).apply();
+            if (!qrOn) showQrChip(null);
         });
         group("System");
         row(idx, "Timer sound", soundOn ? "On" : "Off", soundOn, null, this::toggleSound);

@@ -140,14 +140,44 @@
                 android:layout_marginTop="28dp" />
 
             <LinearLayout
-                android:id="@+id/lens_picker"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="bottom|center_horizontal"
                 android:layout_marginBottom="8dp"
-                android:gravity="center"
-                android:orientation="horizontal"
-                android:visibility="gone" />
+                android:gravity="center_horizontal"
+                android:orientation="vertical">
+
+                <!-- Appears while a QR code with a link is in view; tap opens the link. -->
+                <TextView
+                    android:id="@+id/qr_chip"
+                    style="@style/HC.Caps"
+                    android:layout_width="wrap_content"
+                    android:layout_height="30dp"
+                    android:layout_marginBottom="6dp"
+                    android:background="@drawable/hc_toast"
+                    android:clickable="true"
+                    android:contentDescription="Open QR link"
+                    android:drawablePadding="7dp"
+                    android:ellipsize="end"
+                    android:focusable="true"
+                    android:gravity="center_vertical"
+                    android:letterSpacing="0.08"
+                    android:maxLines="1"
+                    android:maxWidth="240dp"
+                    android:paddingHorizontal="11dp"
+                    android:textColor="@color/hc_white"
+                    android:textSize="11sp"
+                    android:visibility="gone"
+                    app:drawableStartCompat="@drawable/hc_ic_link" />
+
+                <LinearLayout
+                    android:id="@+id/lens_picker"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:orientation="horizontal"
+                    android:visibility="gone" />
+            </LinearLayout>
 
             <LinearLayout
                 android:id="@+id/toast"
