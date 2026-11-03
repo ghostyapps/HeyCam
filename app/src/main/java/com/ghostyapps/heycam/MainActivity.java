@@ -161,6 +161,7 @@ public class MainActivity extends AppCompatActivity implements CameraController.
     private Bitmap qrBitmap;
     private Uri qrLink;
     private long qrLastSeen;
+    private int qrSession;
     private Runnable hideToast;
     private int menuSelected = -1;
 
@@ -250,6 +251,7 @@ public class MainActivity extends AppCompatActivity implements CameraController.
 
     @Override
     protected void onPause() {
+        qrSession++;
         if (timerRunning) cancelTimer(false);
         main.removeCallbacks(histogramTick);
         main.removeCallbacks(qrTick);
@@ -927,8 +929,9 @@ public class MainActivity extends AppCompatActivity implements CameraController.
                 if (!qrScanner.isBusy()) {
                     if (qrBitmap == null) qrBitmap = Bitmap.createBitmap(QR_FRAME_W, QR_FRAME_H, Bitmap.Config.ARGB_8888);
                     Bitmap b = texture.getBitmap(qrBitmap);
+                    final int session = qrSession;
                     if (b != null) qrScanner.scan(b, link -> {
-                        if (link != null) {
+                        if (session == qrSession && qrOn && link != null) {
                             qrLastSeen = SystemClock.uptimeMillis();
                             if (!link.equals(qrLink)) showQrChip(link);
                         }
